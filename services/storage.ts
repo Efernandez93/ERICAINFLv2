@@ -1,4 +1,3 @@
-
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, Timestamp, terminate } from 'firebase/firestore';
 import { AnalysisResult, GroundingSource } from '../types';
@@ -57,7 +56,14 @@ const handleFirebaseError = async (e: any) => {
 
     if (isConfigError) {
         if (!isFirebaseDisabled) {
-            console.warn("[STORAGE] Cloud Sync unavailable (API disabled or permissions denied). Switching to Local-Only mode.");
+            console.warn("[STORAGE] Cloud Sync unavailable. Switching to Local-Only mode.");
+            if (e?.code === 'permission-denied') {
+                console.warn("Hint: Check Firestore Security Rules. Ensure 'allow read, write: if true;' is set for development.");
+            }
+            if (e?.message?.includes('API has not been used')) {
+                console.warn("Hint: Ensure Cloud Firestore API is enabled in Google Cloud Console.");
+            }
+
             isFirebaseDisabled = true;
             
             // STOP the SDK from retrying and spamming the console

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Calendar, Clock, ChevronRight, RefreshCw, ChevronDown, AlertTriangle, Database } from 'lucide-react';
 import { Game, ScheduleResponse } from '../types';
@@ -91,7 +90,7 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                 ))}
              </div>
         ) : !error ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2">
                 {schedule?.games?.map((game, idx) => {
                     const isSelected = selectedGameId === game.id;
                     const isCached = cachedGameIds.includes(game.id);
@@ -122,9 +121,9 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                                 </div>
                             )}
 
-                            <div className="flex justify-between items-start w-full mb-1.5">
-                                <div className={`text-[10px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
-                                    <Clock size={10} /> {game.time}
+                            <div className="flex justify-between items-start w-full mb-1">
+                                <div className={`text-[9px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
+                                    <Clock size={9} /> {game.time}
                                 </div>
                             </div>
                             
@@ -134,9 +133,9 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                                         src={`https://a.espncdn.com/i/teamlogos/nfl/500/${game.awayTeamAbbr?.toLowerCase() || 'nfl'}.png`}
                                         onError={(e) => { e.currentTarget.src = FALLBACK_LOGO }}
                                         alt={game.awayTeam} 
-                                        className="w-8 h-8 object-contain mb-1 drop-shadow-lg" 
+                                        className="w-7 h-7 object-contain mb-1 drop-shadow-lg" 
                                     />
-                                    <span className={`font-bold text-xs leading-tight text-center truncate w-full ${textClasses}`}>{game.awayTeam}</span>
+                                    <span className={`font-bold text-[10px] leading-tight text-center truncate w-full ${textClasses}`}>{game.awayTeam}</span>
                                 </div>
                                 
                                 <div className={`px-1 text-[10px] font-bold ${vsClasses}`}>@</div>
@@ -146,9 +145,9 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                                         src={`https://a.espncdn.com/i/teamlogos/nfl/500/${game.homeTeamAbbr?.toLowerCase() || 'nfl'}.png`}
                                         onError={(e) => { e.currentTarget.src = FALLBACK_LOGO }}
                                         alt={game.homeTeam} 
-                                        className="w-8 h-8 object-contain mb-1 drop-shadow-lg" 
+                                        className="w-7 h-7 object-contain mb-1 drop-shadow-lg" 
                                     />
-                                    <span className={`font-bold text-xs leading-tight text-center truncate w-full ${textClasses}`}>{game.homeTeam}</span>
+                                    <span className={`font-bold text-[10px] leading-tight text-center truncate w-full ${textClasses}`}>{game.homeTeam}</span>
                                 </div>
                             </div>
                         </button>
