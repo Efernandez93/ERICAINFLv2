@@ -117,10 +117,10 @@ export const analyzeMatchup = async (
     1. Search for CURRENT defensive rankings for BOTH teams against specific positions (RB, WR, TE).
     2. Search for key starters (QB, Top 3 WR, Top 2 RB, Top 1 TE) for EACH team.
        - Get their CURRENT SEASON AVERAGES.
-       - Get their LAST 5 GAMES stats in a short text format (e.g. "vs Opp: Stat line").
-         - For QB: Show Passing Yards & TDs.
-         - For RB: Show Rushing Yards.
-         - For WR/TE: Show Receptions & Receiving Yards.
+       - Get their LAST 5 GAMES stats in a structured table format.
+         - For QB: Opponent, Passing Yards, Passing TDs, INTs.
+         - For RB: Opponent, Rush Attempts, Rush Yards, Rec Yards.
+         - For WR/TE: Opponent, Receptions, Rec Yards, TDs.
     3. For EACH key starter, generate 2 potential parlay legs (e.g. Over Yards, Over Receptions) based on their average, recent performance, and the defense they are facing.
     4. Identify 3-4 "High Confidence" standout betting props from the entire pool.
 
@@ -144,8 +144,8 @@ export const analyzeMatchup = async (
                   "position": "Pos", 
                   "avgStats": "Season Avg String",
                   "last5Games": [
-                    "vs KC: 250 yds, 2 TD",
-                    "vs DEN: 180 yds, 1 TD"
+                     { "opponent": "vs KC", "stats": { "Rec": 5, "Yds": 62, "TD": 0 } },
+                     { "opponent": "@ DEN", "stats": { "Rec": 3, "Yds": 45, "TD": 1 } }
                   ],
                   "suggestedLegs": [
                       {

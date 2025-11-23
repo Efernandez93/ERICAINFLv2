@@ -1,5 +1,5 @@
 import React from 'react';
-import { TeamRoster, ParlayLeg } from '../types';
+import { TeamRoster, ParlayLeg, GameLog } from '../types';
 import { Users, PlusCircle, CheckCircle2, TrendingUp, Shield, History } from 'lucide-react';
 
 interface RosterListProps {
@@ -11,6 +11,47 @@ interface RosterListProps {
 
 const RosterList: React.FC<RosterListProps> = ({ teamA, teamB, pinnedLegs, onTogglePin }) => {
   
+  const renderLast5Table = (logs?: GameLog[]) => {
+      if (!logs || logs.length === 0) return null;
+
+      // Extract dynamic headers from the first log entry
+      const firstLog = logs[0];
+      const statKeys = Object.keys(firstLog.stats);
+
+      return (
+        <div className="mb-4 overflow-hidden rounded-lg border border-slate-700/50">
+            <div className="bg-slate-950/80 px-3 py-1.5 flex items-center gap-2 border-b border-slate-700/50">
+                <History size={12} className="text-slate-400" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Last 5 Games</span>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-900/50 text-slate-400 font-semibold uppercase tracking-wider">
+                        <tr>
+                            <th className="px-3 py-2 text-[10px]">Opp</th>
+                            {statKeys.map(key => (
+                                <th key={key} className="px-2 py-2 text-[10px] text-center">{key}</th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700/30">
+                        {logs.map((log, i) => (
+                            <tr key={i} className="hover:bg-slate-800/30 transition-colors">
+                                <td className="px-3 py-1.5 font-mono text-slate-300 font-medium whitespace-nowrap">{log.opponent}</td>
+                                {statKeys.map(key => (
+                                    <td key={key} className="px-2 py-1.5 text-center text-slate-200">
+                                        {log.stats[key]}
+                                    </td>
+                                ))}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      );
+  };
+
   const renderTeam = (team: TeamRoster) => (
     <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden h-full">
       <div className="bg-slate-800/50 px-4 py-3 border-b border-slate-700 flex items-center gap-2">
@@ -33,22 +74,8 @@ const RosterList: React.FC<RosterListProps> = ({ teamA, teamB, pinnedLegs, onTog
                 </div>
             </div>
 
-            {/* Last 5 Games History */}
-            {player.last5Games && player.last5Games.length > 0 && (
-                <div className="mb-3 bg-slate-950/50 rounded p-2 border border-slate-800/50">
-                    <div className="flex items-center gap-1 mb-1.5">
-                        <History size={10} className="text-slate-500" />
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Last 5 Games</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                        {player.last5Games.map((game, gIdx) => (
-                            <span key={gIdx} className="text-[10px] text-slate-300 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 whitespace-nowrap">
-                                {game}
-                            </span>
-                        ))}
-                    </div>
-                </div>
-            )}
+            {/* Last 5 Games Table */}
+            {renderLast5Table(player.last5Games)}
 
             {/* Suggested Legs for Player */}
             <div className="space-y-2">

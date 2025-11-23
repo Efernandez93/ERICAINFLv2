@@ -18,11 +18,17 @@ export interface ParlayLeg {
   defenseAllowedVsPos: number | string;
 }
 
+export interface GameLog {
+  opponent: string;
+  date?: string;
+  stats: Record<string, string | number>; // e.g. { "Rec": 5, "Yds": 50 }
+}
+
 export interface PlayerStat {
   name: string;
   position: string;
   avgStats: string; // e.g. "5.4 rec, 72.5 yds, 0.5 TD"
-  last5Games?: string[]; // New field for recent game logs
+  last5Games?: GameLog[]; // Structured game logs
   suggestedLegs?: ParlayLeg[];
 }
 
