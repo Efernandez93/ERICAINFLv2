@@ -223,10 +223,10 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                         textClasses = 'text-white';
                         vsClasses = 'text-indigo-200';
                     } else if (gameStarted) {
-                        // Gray style for games that have already started (marked as "read")
-                        containerClasses = 'bg-slate-800/40 border-slate-600/40 hover:bg-slate-800/50 hover:border-slate-600/50 shadow-md shadow-slate-900/10 opacity-60';
-                        textClasses = 'text-slate-400';
-                        vsClasses = 'text-slate-500';
+                        // Red style for games that have already started
+                        containerClasses = 'bg-red-950/30 border-red-500/50 hover:bg-red-950/50 hover:border-red-500/70 shadow-md shadow-red-900/10';
+                        textClasses = 'text-red-200';
+                        vsClasses = 'text-red-400';
                     } else if (isCached) {
                         // Green style for cached items
                         containerClasses = 'bg-emerald-950/20 border-emerald-500/40 hover:bg-emerald-950/40 hover:border-emerald-500/60 shadow-md shadow-emerald-900/10';
@@ -241,8 +241,8 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                             title={gameStarted ? 'This game has already started' : ''}
                         >
                             {gameStarted && !isSelected && (
-                                <div className="absolute top-1 right-1 text-[8px] font-bold text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded border border-slate-500/30">
-                                    FINAL
+                                <div className="absolute top-1 right-1 text-[8px] font-bold text-red-300 bg-red-900/70 px-1.5 py-0.5 rounded border border-red-500/30">
+                                    STARTED
                                 </div>
                             )}
 
@@ -253,7 +253,10 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                             )}
 
                             <div className="flex flex-col gap-0.5 w-full mb-1">
-                                <div className={`text-[8px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${gameStarted ? 'text-slate-500 bg-slate-800/50' : isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
+                                <div className={`text-[7px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${gameStarted ? 'text-red-300 bg-red-900/40' : isSelected ? 'text-indigo-100 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
+                                    <Calendar size={7} /> {game.date}
+                                </div>
+                                <div className={`text-[8px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${gameStarted ? 'text-red-300 bg-red-900/40' : isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
                                     <Clock size={8} /> {convertToCSTTime(game.time)}
                                 </div>
                                 {!gameStarted && (
