@@ -1,17 +1,46 @@
 import { GoogleGenAI } from "@google/genai";
-import { AnalysisResult, GroundingSource, ScheduleResponse, Game } from "../types";
+import { AnalysisResult, GroundingSource, ScheduleResponse } from "../types";
 
-// DEBUG: Safe check for API key presence (do not log the actual key)
-const apiKey = process.env.API_KEY;
-console.log(`[DEBUG] API Key status: ${apiKey ? 'Present' : 'Missing (Check Environment Variables)'}`);
+// Helper to safely get the API Key from various environments without crashing
+const getSafeApiKey = (): string | undefined => {
+  try {
+    // 1. Try standard Vite/Vercel Frontend key
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_KEY) {
+      // @ts-ignore
+      return import.meta.env.VITE_API_KEY;
+    }
+  } catch (e) {}
 
-if (!apiKey) {
-    console.error("CRITICAL: API_KEY is missing from process.env. The app will not function correctly.");
-}
+  try {
+    // 2. Try process.env (Standard Node/CRA/Webpack)
+    // We check typeof process first to avoid "ReferenceError: process is not defined" in browsers
+    if (typeof process !== 'undefined' && process.env?.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {}
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return undefined;
+};
+
+// Log status on load (safely)
+const currentKey = getSafeApiKey();
+console.log(`[DEBUG] API Key status: ${currentKey ? 'Present' : 'Missing'}`);
 
 export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleResponse | null; rawText: string; error?: string }> => {
+  const apiKey = getSafeApiKey();
+  
+  if (!apiKey) {
+      return { 
+          data: null, 
+          rawText: "", 
+          error: "API Key is missing. Please add VITE_API_KEY or API_KEY to your Vercel Environment Variables." 
+      };
+  }
+
+  // Initialize AI client inside the function to prevent top-level crashes
+  const ai = new GoogleGenAI({ apiKey });
+
   const today = new Date().toDateString();
   const weekQuery = week ? `NFL ${week}` : `the CURRENT or UPCOMING week's NFL schedule relative to today: ${today}`;
   
@@ -33,10 +62,6 @@ export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleRes
   `;
 
   try {
-    if (!process.env.API_KEY) {
-        throw new Error("API_KEY_MISSING");
-    }
-
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
@@ -62,9 +87,9 @@ export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleRes
     console.error("Schedule Fetch Error:", error);
     let errorMessage = "Failed to load schedule.";
     
-    if (error.message.includes("API_KEY_MISSING") || error.toString().includes("API key")) {
+    if (error.message?.includes("API_KEY") || error.toString().includes("API key")) {
         errorMessage = "API Key is missing or invalid.";
-    } else if (error.message.includes("403")) {
+    } else if (error.message?.includes("403")) {
         errorMessage = "API Key not authorized (Check quotas or billing).";
     }
 
@@ -77,9 +102,12 @@ export const analyzeMatchup = async (
   teamB: string
 ): Promise<{ data: AnalysisResult | null; sources: GroundingSource[]; rawText: string }> => {
   
-  if (!process.env.API_KEY) {
-      throw new Error("API Key is missing. Please check your environment variables.");
+  const apiKey = getSafeApiKey();
+  if (!apiKey) {
+      throw new Error("API Key is missing. Please check your environment variables (VITE_API_KEY or API_KEY).");
   }
+
+  const ai = new GoogleGenAI({ apiKey });
 
   const prompt = `
     You are an expert NFL betting analyst.
