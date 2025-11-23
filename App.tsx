@@ -129,9 +129,8 @@ const App: React.FC = () => {
                 <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-indigo-500 shadow-lg shadow-indigo-600/20 bg-slate-800 relative group cursor-pointer">
-                            {/* NOTE: Replace the src below with the URL of the image you uploaded */}
                             <img 
-                                src="https://api.dicebear.com/7.x/avataaars/svg?seed=Eric&backgroundColor=b6e3f4" 
+                                src="https://i.ibb.co/Xf87Rb1s/spongebob.jpg" 
                                 alt="ERIC AI" 
                                 className="w-full h-full object-cover"
                             />
