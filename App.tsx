@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import ScheduleBoard from './components/ScheduleBoard';
 import LegCard from './components/LegCard';
 import SourceList from './components/SourceList';
@@ -7,10 +8,11 @@ import ParlaySidebar from './components/ParlaySidebar';
 import { analyzeMatchup } from './services/gemini';
 import { StorageService, CachedMatchup } from './services/storage';
 import { AnalysisResult, GroundingSource, ParlayLeg, Game } from './types';
-import { Shield, Activity, AlertCircle, Database, HardDrive, Cloud, CloudOff } from 'lucide-react';
+import { Shield, Activity, AlertCircle, Database, HardDrive, Cloud, CloudOff, Terminal, Zap } from 'lucide-react';
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [sources, setSources] = useState<GroundingSource[]>([]);
   const [rawText, setRawText] = useState<string>("");
@@ -18,9 +20,26 @@ const App: React.FC = () => {
   
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [pinnedLegs, setPinnedLegs] = useState<ParlayLeg[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  
+  // Default sidebar to closed on mobile, open on desktop
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+     if (typeof window !== 'undefined') {
+         return window.innerWidth >= 1024;
+     }
+     return true;
+  });
+
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
   const [isCloudSync, setIsCloudSync] = useState(false);
+
+  const streamEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll the streaming text
+  useEffect(() => {
+    if (streamEndRef.current) {
+        streamEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [streamingText]);
 
   // Load list of cached games on mount
   useEffect(() => {
@@ -30,11 +49,23 @@ const App: React.FC = () => {
         setIsCloudSync(StorageService.isCloudActive());
     };
     loadCacheIndex();
+
+    // Resize handler for sidebar
+    const handleResize = () => {
+        if (window.innerWidth < 1024) {
+            setSidebarOpen(false);
+        } else {
+            setSidebarOpen(true);
+        }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleSelectGame = async (game: Game) => {
     setSelectedGame(game);
     setLoading(true);
+    setStreamingText(""); // Reset stream text
     setError(null);
     setResult(null);
     setSources([]);
@@ -53,13 +84,20 @@ const App: React.FC = () => {
             return;
         }
 
-        // 2. Fetch from API if not cached
-        const response = await analyzeMatchup(game.homeTeam, game.awayTeam);
+        // 2. Fetch from API if not cached (with streaming callback)
+        const response = await analyzeMatchup(
+            game.homeTeam, 
+            game.awayTeam, 
+            (partialText) => {
+                setStreamingText(partialText);
+            }
+        );
         
         // Save result to state
         setResult(response.data);
         setSources(response.sources);
         setRawText(response.rawText);
+        setStreamingText(""); // Clear stream text once done to show result
         
         // Save to Cache via Service (Async)
         const cachePayload: CachedMatchup = {
@@ -98,7 +136,12 @@ const App: React.FC = () => {
     <div className="flex min-h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
         
         {/* Left Sidebar (Parlay Builder) */}
-        <div className={`${sidebarOpen ? 'block' : 'hidden'} lg:block h-screen sticky top-0 overflow-y-auto z-40 shadow-xl shadow-black/50`}>
+        <div className={`${sidebarOpen ? 'block' : 'hidden'} lg:block h-screen fixed inset-0 lg:sticky lg:top-0 overflow-y-auto z-40 bg-slate-900 shadow-xl shadow-black/50 lg:w-80 w-full`}>
+             <div className="lg:hidden absolute top-4 right-4 z-50">
+                 <button onClick={() => setSidebarOpen(false)} className="text-slate-400 hover:text-white">
+                     Close Slip
+                 </button>
+             </div>
             <ParlaySidebar legs={pinnedLegs} onRemoveLeg={removePin} />
         </div>
 
@@ -121,7 +164,7 @@ const App: React.FC = () => {
                         </div>
                     </div>
                     <button 
-                        className="lg:hidden text-sm bg-slate-800 px-3 py-1 rounded border border-slate-700"
+                        className="lg:hidden text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg border border-indigo-500 font-bold shadow-lg shadow-indigo-900/20"
                         onClick={() => setSidebarOpen(!sidebarOpen)}
                     >
                         {sidebarOpen ? 'Hide Slip' : `View Slip (${pinnedLegs.length})`}
@@ -144,12 +187,41 @@ const App: React.FC = () => {
                 </div>
                 )}
 
-                {/* Loading State */}
+                {/* Live Loading State (Streaming) */}
                 {loading && (
-                    <div className="text-center py-20 bg-slate-900/30 rounded-2xl border border-dashed border-slate-800">
-                        <div className="inline-block w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p className="text-slate-400 animate-pulse font-mono text-sm">ERIC is analyzing defensive schemes vs {selectedGame?.homeTeam}...</p>
-                        <p className="text-slate-600 text-xs mt-2">Checking real-time data & stats...</p>
+                    <div className="w-full">
+                         <div className="bg-slate-900 rounded-t-xl border border-slate-800 p-3 flex items-center gap-2">
+                             <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
+                             <div className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse delay-75"></div>
+                             <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse delay-150"></div>
+                             <span className="ml-2 text-xs font-mono text-slate-400 flex items-center gap-2">
+                                 <Terminal size={12} />
+                                 ERIC_AI_ANALYSIS_PROTOCOL_V1.EXE
+                             </span>
+                         </div>
+                         <div className="bg-slate-950 border-x border-b border-slate-800 p-6 rounded-b-xl min-h-[300px] font-mono text-sm overflow-hidden relative">
+                             {/* Scan line effect */}
+                             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-indigo-500/5 to-transparent animate-scan pointer-events-none"></div>
+                             
+                             {streamingText ? (
+                                 <div className="whitespace-pre-wrap text-emerald-500/90 leading-relaxed">
+                                     {streamingText}
+                                     <span className="inline-block w-2 h-4 bg-emerald-500 ml-1 animate-pulse align-middle"></span>
+                                     <div ref={streamEndRef} />
+                                 </div>
+                             ) : (
+                                 <div className="flex flex-col items-center justify-center h-40 gap-4">
+                                     <div className="inline-block w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                                     <p className="text-slate-500 animate-pulse">Initializing connection to sports data endpoints...</p>
+                                 </div>
+                             )}
+                         </div>
+                         <div className="mt-2 text-center">
+                            <p className="text-slate-600 text-xs flex items-center justify-center gap-1">
+                                <Zap size={10} className="text-yellow-500" />
+                                Live Stream: Reading real-time sources...
+                            </p>
+                         </div>
                     </div>
                 )}
 
@@ -268,7 +340,7 @@ const App: React.FC = () => {
             {/* Storage Mode Footer */}
             <footer className="border-t border-slate-900 bg-slate-950 py-3 px-6">
                 <div className="max-w-6xl mx-auto flex items-center justify-between text-[10px] text-slate-600">
-                    <span>ERIC AI v1.1</span>
+                    <span>ERIC AI v1.2</span>
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800">
                             <HardDrive size={10} className="text-indigo-500" />
