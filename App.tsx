@@ -8,7 +8,7 @@ import ParlaySidebar from './components/ParlaySidebar';
 import { getKeyPlayersAndStats, getDeepAnalysis } from './services/gemini';
 import { StorageService } from './services/storage';
 import { AnalysisResult, GroundingSource, ParlayLeg, Game, TeamRoster } from './types';
-import { Shield, Activity, AlertCircle, Database, HardDrive, Terminal, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { Shield, Activity, AlertCircle, Database, HardDrive, Terminal, Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
   const [loadingStage, setLoadingStage] = useState<'idle' | 'rosters' | 'analysis'>('idle');
@@ -34,6 +34,8 @@ const App: React.FC = () => {
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
   const [cloudStatus, setCloudStatus] = useState<'checking' | 'connected' | 'offline'>('checking');
   const [saveNotification, setSaveNotification] = useState<{ show: boolean; gameId?: string }>({ show: false });
+  const [cacheStats, setCacheStats] = useState<{ totalGames: number; totalSchedules: number; isCloudConnected: boolean; localStorageSize: number }>({ totalGames: 0, totalSchedules: 0, isCloudConnected: false, localStorageSize: 0 });
+  const [showCacheDetails, setShowCacheDetails] = useState(false);
 
   const FALLBACK_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png";
 
@@ -62,6 +64,10 @@ const App: React.FC = () => {
             const syncedIds = await StorageService.getCachedGameIds();
             setCachedGameIds(syncedIds);
         }
+
+        // 4. Get Cache Stats
+        const stats = await StorageService.getCacheStats();
+        setCacheStats(stats);
     };
     initApp();
 
@@ -75,6 +81,11 @@ const App: React.FC = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  const handleRefreshCache = async () => {
+    const stats = await StorageService.getCacheStats();
+    setCacheStats(stats);
+  };
 
   const handleSelectGame = async (game: Game) => {
     setSelectedGame(game);
@@ -426,36 +437,76 @@ const App: React.FC = () => {
 
             {/* Storage Mode Footer */}
             <footer className="border-t border-slate-900 bg-slate-950 py-3 px-6">
-                <div className="max-w-6xl mx-auto flex items-center justify-between text-[10px] text-slate-600">
+                <div className="max-w-6xl mx-auto flex items-center justify-between text-[10px] text-slate-600 flex-wrap gap-3">
                     <span>ERIC AI v1.3</span>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 flex-wrap">
                         {cloudStatus === 'checking' && (
                             <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-indigo-500/30 text-indigo-400">
                                 <Loader2 size={10} className="animate-spin" />
                                 <span>Verifying Connection...</span>
                             </div>
                         )}
-                        
+
                         {cloudStatus === 'connected' && (
                             <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-emerald-500/30 text-emerald-500 animate-fade-in">
                                 <Cloud size={10} />
                                 <span>Cloud Connected</span>
                             </div>
                         )}
-                        
+
                         {cloudStatus === 'offline' && (
                             <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-orange-500/30 text-orange-400 animate-fade-in">
                                 <CloudOff size={10} />
                                 <span>Local Storage Mode</span>
                             </div>
                         )}
-                        
-                        <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800">
-                            <HardDrive size={10} className="text-indigo-500" />
-                            <span className="text-slate-400">Cache Active</span>
-                        </div>
+
+                        <button
+                            onClick={() => setShowCacheDetails(!showCacheDetails)}
+                            className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+                            title="Click to view cache details"
+                        >
+                            <Database size={10} className="text-indigo-500" />
+                            <span className="text-slate-400">{cacheStats.totalGames} Games Cached</span>
+                        </button>
+
+                        <button
+                            onClick={handleRefreshCache}
+                            className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer hover:text-slate-300"
+                            title="Refresh cache statistics"
+                        >
+                            <RefreshCw size={10} className="text-slate-400" />
+                            <span className="text-slate-400 hidden sm:inline">Refresh</span>
+                        </button>
                     </div>
                 </div>
+
+                {/* Cache Details Panel */}
+                {showCacheDetails && (
+                    <div className="mt-3 pt-3 border-t border-slate-800 bg-slate-900/50 rounded p-3 text-[9px] text-slate-400">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div>
+                                <span className="text-emerald-500 font-bold">Games</span>
+                                <p>{cacheStats.totalGames} analyzed</p>
+                            </div>
+                            <div>
+                                <span className="text-indigo-500 font-bold">Schedules</span>
+                                <p>{cacheStats.totalSchedules} cached</p>
+                            </div>
+                            <div>
+                                <span className="text-orange-500 font-bold">Storage</span>
+                                <p>{(cacheStats.localStorageSize / 1024).toFixed(1)} KB</p>
+                            </div>
+                            <div>
+                                <span className={cacheStats.isCloudConnected ? 'text-emerald-500 font-bold' : 'text-orange-500 font-bold'}>
+                                    Cloud
+                                </span>
+                                <p>{cacheStats.isCloudConnected ? 'Connected' : 'Offline'}</p>
+                            </div>
+                        </div>
+                        <p className="text-slate-500 mt-2">💡 Tip: All users share cached games and schedules - the more you load, the faster it is for everyone!</p>
+                    </div>
+                )}
             </footer>
         </div>
     </div>

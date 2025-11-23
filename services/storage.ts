@@ -14,6 +14,9 @@ import { supabase } from './supabase';
 const CACHE_PREFIX = 'eric_ai_cache_v1_';
 const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24; // 24 Hours
 
+const SCHEDULE_CACHE_PREFIX = 'eric_ai_schedule_v1_';
+const SCHEDULE_EXPIRY_MS = 1000 * 60 * 60 * 6; // 6 hours
+
 // Circuit breaker flag to prevent spamming errors if DB is down/missing
 let isCloudDisabled = false;
 
@@ -247,13 +250,11 @@ export const StorageService = {
   },
 
   /**
-   * Saves NFL schedule to LocalStorage cache
+   * Saves NFL schedule to Supabase + LocalStorage cache
    * Schedules are cached for 6 hours (shorter than matchups since they update weekly)
+   * Schedules are now shared across all users via Supabase!
    */
   saveSchedule: async (week: string, games: any[]): Promise<void> => {
-    const SCHEDULE_CACHE_PREFIX = 'eric_ai_schedule_v1_';
-    const SCHEDULE_EXPIRY_MS = 1000 * 60 * 60 * 6; // 6 hours
-
     const cacheKey = `${SCHEDULE_CACHE_PREFIX}${week}`;
     const cache: ScheduleCache = {
       week,
@@ -261,23 +262,79 @@ export const StorageService = {
       timestamp: Date.now()
     };
 
+    // 1. Try Supabase (Cloud) - Share schedule with all users
+    if (supabase && !isCloudDisabled) {
+      try {
+        const { error } = await supabase
+          .from('schedules')
+          .upsert({
+            id: week,
+            week,
+            games,
+            timestamp: Date.now()
+          });
+
+        if (error) {
+          console.warn(`[STORAGE] Supabase schedule save failed: ${error.message}`);
+          if (error.message.includes('permission') || error.message.includes('connection')) {
+            isCloudDisabled = true;
+          }
+        } else {
+          console.log(`[STORAGE] Saved schedule for ${week} to Supabase`);
+        }
+      } catch (e: any) {
+        console.warn(`[STORAGE] Supabase schedule save failed: ${e.message}`);
+        isCloudDisabled = true;
+      }
+    }
+
+    // 2. Fallback to LocalStorage
     try {
       localStorage.setItem(cacheKey, JSON.stringify(cache));
-      console.log(`[STORAGE] Saved schedule for ${week} to cache`);
+      console.log(`[STORAGE] Saved schedule for ${week} to LocalStorage`);
     } catch (e: any) {
       console.warn(`[STORAGE] Failed to cache schedule: ${e.message}`);
     }
   },
 
   /**
-   * Retrieves cached NFL schedule
+   * Retrieves cached NFL schedule from Supabase (Cloud) first, then LocalStorage
    * Returns null if not found or expired (6 hour TTL)
+   * Schedules are now shared across all users!
    */
   getSchedule: async (week: string): Promise<any[] | null> => {
-    const SCHEDULE_CACHE_PREFIX = 'eric_ai_schedule_v1_';
-    const SCHEDULE_EXPIRY_MS = 1000 * 60 * 60 * 6; // 6 hours
-
     const cacheKey = `${SCHEDULE_CACHE_PREFIX}${week}`;
+
+    // 1. Try Supabase (Cloud) - Get shared schedule
+    if (supabase && !isCloudDisabled) {
+      try {
+        const { data, error } = await supabase
+          .from('schedules')
+          .select('*')
+          .eq('id', week)
+          .single();
+
+        if (error) {
+          if (error.code !== 'PGRST116') {
+            console.warn(`[STORAGE] Supabase read schedule failed: ${error.message}`);
+            if (error.message.includes('permission') || error.message.includes('connection')) {
+              isCloudDisabled = true;
+            }
+          }
+        } else if (data) {
+          // Check expiry
+          if (Date.now() - data.timestamp < SCHEDULE_EXPIRY_MS) {
+            console.log(`[STORAGE] Hit Supabase schedule cache for ${week}`);
+            return data.games;
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[STORAGE] Supabase read schedule failed: ${e.message}`);
+        isCloudDisabled = true;
+      }
+    }
+
+    // 2. Fallback to LocalStorage
     const cached = localStorage.getItem(cacheKey);
 
     if (!cached) return null;
@@ -285,7 +342,7 @@ export const StorageService = {
     try {
       const cache: ScheduleCache = JSON.parse(cached);
       if (Date.now() - cache.timestamp < SCHEDULE_EXPIRY_MS) {
-        console.log(`[STORAGE] Hit schedule cache for ${week}`);
+        console.log(`[STORAGE] Hit LocalStorage schedule cache for ${week}`);
         return cache.games;
       } else {
         localStorage.removeItem(cacheKey);
@@ -295,5 +352,59 @@ export const StorageService = {
       console.warn(`[STORAGE] Failed to parse schedule cache: ${e}`);
       return null;
     }
+  },
+
+  /**
+   * Gets cache statistics for display in UI
+   */
+  getCacheStats: async (): Promise<{
+    totalGames: number;
+    totalSchedules: number;
+    isCloudConnected: boolean;
+    localStorageSize: number;
+  }> => {
+    const ids = new Set<string>();
+    let localStorageSize = 0;
+
+    // Count games in LocalStorage
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(CACHE_PREFIX)) {
+        ids.add(key.replace(CACHE_PREFIX, ''));
+        const item = localStorage.getItem(key);
+        if (item) localStorageSize += item.length;
+      }
+    }
+
+    let totalSchedules = 0;
+    // Count schedules in LocalStorage
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(SCHEDULE_CACHE_PREFIX)) {
+        totalSchedules++;
+      }
+    }
+
+    let cloudGameCount = 0;
+    if (supabase && !isCloudDisabled) {
+      try {
+        const { data, error } = await supabase
+          .from('matchups')
+          .select('id', { count: 'exact' });
+
+        if (!error && data) {
+          cloudGameCount = data.length;
+        }
+      } catch (e) {
+        // Silently fail
+      }
+    }
+
+    return {
+      totalGames: Math.max(ids.size, cloudGameCount),
+      totalSchedules,
+      isCloudConnected: supabase !== null && !isCloudDisabled,
+      localStorageSize
+    };
   }
 };
