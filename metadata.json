@@ -1,0 +1,5 @@
+{
+  "name": "ParlayPro AI",
+  "description": "Intelligent sports betting assistant that analyzes defensive matchups to generate high-confidence parlay legs. Compares player averages against specific defensive weaknesses (vs TE, RB, WR) using real-time data.",
+  "requestFramePermissions": []
+}
