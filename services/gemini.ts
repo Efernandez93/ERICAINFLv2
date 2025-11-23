@@ -109,23 +109,27 @@ export const analyzeMatchup = async (
 
   const ai = new GoogleGenAI({ apiKey });
 
+  const today = new Date().toDateString();
+
   const prompt = `
     You are ERIC (Expert Real-time Intelligent Capper), an elite professional sports bettor and analyst.
+    Today is ${today}.
     Analyze the upcoming NFL matchup between ${teamA} and ${teamB}.
-    
+
+    CRITICAL INSTRUCTIONS FOR DATA ACCURACY:
+    1. **DO NOT GUESS STATS.** You must use Google Search to find the actual data.
+    2. **PRIORITIZE THESE SOURCES:** ESPN, Pro-Football-Reference, NFL.com, CBS Sports.
+    3. **VERIFY ACTIVE ROSTER:** Ensure players analyzed are not on IR (Injured Reserve) or Ruled Out.
+
     Task:
-    1. Search for CURRENT defensive rankings for BOTH teams against specific positions (RB, WR, TE).
-    2. Search for key starters (QB, Top 3 WR, Top 2 RB, Top 1 TE) for EACH team.
-       - Get their CURRENT SEASON AVERAGES.
-       - Get their LAST 5 GAMES stats in a structured table format.
-         - For QB: Opponent, Passing Yards, Passing TDs, INTs.
-         - For RB: Opponent, Rush Attempts, Rush Yards, Rec Yards.
-         - For WR/TE: Opponent, Receptions, Rec Yards, TDs.
-    3. For EACH key starter, generate 2 potential parlay legs (e.g. Over Yards, Over Receptions) based on their average, recent performance, and the defense they are facing.
-    4. Identify 3-4 "High Confidence" standout betting props from the entire pool.
+    1. Search for "[${teamA} vs ${teamB}] injury report" and "depth chart" to confirm active starters.
+    2. Search for "NFL defense rankings vs position 2024" to get accurate defensive stats.
+    3. FOR EACH KEY STARTER (QB, Top RB, Top WR):
+       - Search explicitly for: "[Player Name] game log 2024" to fill the "last5Games" table.
+       - Extract the MOST RECENT 5 games played.
+       - If a player was injured/out, skip those games and find games they played.
 
     Output Requirements:
-    - You MUST use Google Search to get real stats.
     - Format the output strictly as a JSON object wrapped in a markdown code block.
     
     JSON Structure:
@@ -144,8 +148,8 @@ export const analyzeMatchup = async (
                   "position": "Pos", 
                   "avgStats": "Season Avg String",
                   "last5Games": [
-                     { "opponent": "vs KC", "stats": { "Rec": 5, "Yds": 62, "TD": 0 } },
-                     { "opponent": "@ DEN", "stats": { "Rec": 3, "Yds": 45, "TD": 1 } }
+                     { "opponent": "vs KC", "date": "Oct 12", "stats": { "Rec": 5, "Yds": 62, "TD": 0 } },
+                     { "opponent": "@ DEN", "date": "Oct 05", "stats": { "Rec": 3, "Yds": 45, "TD": 1 } }
                   ],
                   "suggestedLegs": [
                       {
