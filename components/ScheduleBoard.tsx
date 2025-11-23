@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Calendar, Clock, ChevronRight, RefreshCw, ChevronDown, AlertTriangle, Database } from 'lucide-react';
 import { Game, ScheduleResponse } from '../types';
@@ -36,6 +37,7 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
   }, [selectedWeek]);
 
   const weeks = ['Current', ...Array.from({ length: 18 }, (_, i) => `Week ${i + 1}`)];
+  const FALLBACK_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png";
 
   return (
     <div className="mb-8">
@@ -83,13 +85,13 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
         )}
 
         {loading ? (
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {[1,2,3,4,5,6].map(i => (
-                    <div key={i} className="h-24 bg-slate-800/50 rounded-xl animate-pulse border border-slate-800"></div>
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                {[1,2,3,4,5,6,7,8].map(i => (
+                    <div key={i} className="h-20 bg-slate-800/50 rounded-xl animate-pulse border border-slate-800"></div>
                 ))}
              </div>
         ) : !error ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
                 {schedule?.games?.map((game, idx) => {
                     const isSelected = selectedGameId === game.id;
                     const isCached = cachedGameIds.includes(game.id);
@@ -112,38 +114,43 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                         <button
                             key={game.id || idx}
                             onClick={() => onSelectGame(game)}
-                            className={`flex flex-col p-3 rounded-xl border text-left transition-all relative ${containerClasses}`}
+                            className={`flex flex-col p-2 rounded-xl border text-left transition-all relative ${containerClasses}`}
                         >
                             {isCached && !isSelected && (
-                                <div className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-900/50 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                <div className="absolute top-1 right-1 flex items-center gap-0.5 text-[8px] font-bold text-emerald-400 bg-emerald-900/50 px-1 py-0.5 rounded border border-emerald-500/20">
                                     <Database size={8} /> READY
                                 </div>
                             )}
 
-                            <div className="flex justify-between items-start w-full mb-2">
-                                <div className={`text-xs font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
+                            <div className="flex justify-between items-start w-full mb-1.5">
+                                <div className={`text-[10px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
                                     <Clock size={10} /> {game.time}
                                 </div>
-                                {!isCached && (
-                                    <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                                        {game.date}
-                                    </div>
-                                )}
                             </div>
-                            <div className="flex-1 w-full space-y-1">
-                                <div className={`font-bold text-lg leading-tight ${textClasses}`}>
-                                    {game.awayTeam}
+                            
+                            <div className="flex items-center justify-between w-full px-1">
+                                <div className="flex flex-col items-center flex-1">
+                                    <img 
+                                        src={`https://a.espncdn.com/i/teamlogos/nfl/500/${game.awayTeamAbbr?.toLowerCase() || 'nfl'}.png`}
+                                        onError={(e) => { e.currentTarget.src = FALLBACK_LOGO }}
+                                        alt={game.awayTeam} 
+                                        className="w-8 h-8 object-contain mb-1 drop-shadow-lg" 
+                                    />
+                                    <span className={`font-bold text-xs leading-tight text-center truncate w-full ${textClasses}`}>{game.awayTeam}</span>
                                 </div>
-                                <div className={`text-xs ${vsClasses}`}>@</div>
-                                <div className={`font-bold text-lg leading-tight ${textClasses}`}>
-                                    {game.homeTeam}
+                                
+                                <div className={`px-1 text-[10px] font-bold ${vsClasses}`}>@</div>
+
+                                <div className="flex flex-col items-center flex-1">
+                                    <img 
+                                        src={`https://a.espncdn.com/i/teamlogos/nfl/500/${game.homeTeamAbbr?.toLowerCase() || 'nfl'}.png`}
+                                        onError={(e) => { e.currentTarget.src = FALLBACK_LOGO }}
+                                        alt={game.homeTeam} 
+                                        className="w-8 h-8 object-contain mb-1 drop-shadow-lg" 
+                                    />
+                                    <span className={`font-bold text-xs leading-tight text-center truncate w-full ${textClasses}`}>{game.homeTeam}</span>
                                 </div>
                             </div>
-                            {isSelected && (
-                                <div className="mt-2 w-full flex justify-center">
-                                    <ChevronRight className="animate-bounce-x" size={16} />
-                                </div>
-                            )}
                         </button>
                     )
                 })}

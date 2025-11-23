@@ -1,5 +1,6 @@
+
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, Timestamp } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, Timestamp, terminate } from 'firebase/firestore';
 import { AnalysisResult, GroundingSource } from '../types';
 
 /**
@@ -33,19 +34,51 @@ interface CacheItem {
 // Initialize Firebase safely
 let db: any = null;
 let isFirebaseActive = false;
+let isFirebaseDisabled = false; // Runtime kill switch if API is broken
 
 try {
     const app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     isFirebaseActive = true;
-    console.log("[STORAGE] Firebase initialized successfully");
+    console.log("[STORAGE] Firebase initialized");
 } catch (e) {
     console.warn("[STORAGE] Failed to initialize Firebase:", e);
 }
 
+const handleFirebaseError = async (e: any) => {
+    // Detect if API is not enabled, permission denied, or client is offline due to config
+    const isConfigError = 
+        e?.code === 'permission-denied' || 
+        e?.message?.includes('API has not been used') || 
+        e?.code === 'failed-precondition' ||
+        e?.code === 'unavailable' ||
+        e?.message?.includes('Cloud Firestore backend') ||
+        e?.message?.includes('client is offline');
+
+    if (isConfigError) {
+        if (!isFirebaseDisabled) {
+            console.warn("[STORAGE] Cloud Sync unavailable (API disabled or permissions denied). Switching to Local-Only mode.");
+            isFirebaseDisabled = true;
+            
+            // STOP the SDK from retrying and spamming the console
+            if (db) {
+                try {
+                    await terminate(db);
+                    console.log("[STORAGE] Firestore connection terminated to prevent retry errors.");
+                } catch (termErr) {
+                    // Ignore termination errors
+                }
+            }
+        }
+    } else {
+        // Only log actual unexpected errors
+        console.error("[STORAGE] Firestore Error:", e);
+    }
+};
+
 export const StorageService = {
   
-  isCloudActive: () => isFirebaseActive,
+  isCloudActive: () => isFirebaseActive && !isFirebaseDisabled,
 
   /**
    * Saves analysis result to storage (Firebase + LocalStorage).
@@ -64,7 +97,7 @@ export const StorageService = {
     }
 
     // 2. Save to Firebase (Shared access for all users)
-    if (isFirebaseActive && db) {
+    if (isFirebaseActive && db && !isFirebaseDisabled) {
       try {
         await setDoc(doc(db, "matchups", gameId), {
             ...item,
@@ -72,7 +105,7 @@ export const StorageService = {
         });
         console.log(`[STORAGE] Saved ${gameId} to Firestore`);
       } catch (e) {
-        console.error("[STORAGE] Error saving to Firestore:", e);
+        handleFirebaseError(e);
       }
     }
   },
@@ -97,7 +130,7 @@ export const StorageService = {
     }
 
     // 2. Check Firebase if local miss
-    if (isFirebaseActive && db) {
+    if (isFirebaseActive && db && !isFirebaseDisabled) {
         try {
             const docRef = doc(db, "matchups", gameId);
             const docSnap = await getDoc(docRef);
@@ -118,7 +151,7 @@ export const StorageService = {
                 }
             }
         } catch (e) {
-            console.error("[STORAGE] Error reading from Firestore:", e);
+            handleFirebaseError(e);
         }
     }
 
@@ -140,14 +173,14 @@ export const StorageService = {
     });
 
     // Get Cloud IDs
-    if (isFirebaseActive && db) {
+    if (isFirebaseActive && db && !isFirebaseDisabled) {
         try {
             const querySnapshot = await getDocs(collection(db, "matchups"));
             querySnapshot.forEach((doc) => {
                 ids.add(doc.id);
             });
         } catch (e) {
-            console.warn("[STORAGE] Failed to fetch index from Firestore", e);
+            handleFirebaseError(e);
         }
     }
 

@@ -1,3 +1,4 @@
+
 export interface DefenseStat {
   position: string; // e.g., "RB", "WR1", "TE"
   rank: string | number; // e.g., "32nd" or 32
@@ -34,6 +35,7 @@ export interface PlayerStat {
 
 export interface TeamRoster {
   teamName: string;
+  teamAbbr?: string; // e.g. "KC", "SF"
   players: PlayerStat[];
 }
 
@@ -57,6 +59,8 @@ export interface Game {
   id: string;
   homeTeam: string;
   awayTeam: string;
+  homeTeamAbbr?: string;
+  awayTeamAbbr?: string;
   time: string;
   date: string;
   status?: string;
