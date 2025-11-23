@@ -45,7 +45,7 @@ export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleRes
   const weekQuery = week ? `NFL ${week}` : `the CURRENT or UPCOMING week's NFL schedule relative to today: ${today}`;
   
   const prompt = `
-    You are an NFL scheduler assistant.
+    You are ERIC (Expert Real-time Intelligent Capper), an elite NFL scheduler assistant.
     Find the schedule for ${weekQuery}.
     
     Task:
@@ -110,7 +110,7 @@ export const analyzeMatchup = async (
   const ai = new GoogleGenAI({ apiKey });
 
   const prompt = `
-    You are an expert NFL betting analyst.
+    You are ERIC (Expert Real-time Intelligent Capper), an elite professional sports bettor and analyst.
     Analyze the upcoming NFL matchup between ${teamA} and ${teamB}.
     
     Task:
@@ -131,7 +131,7 @@ export const analyzeMatchup = async (
     JSON Structure:
     {
       "matchup": "${teamA} vs ${teamB}",
-      "summary": "Brief executive summary of the defensive matchups.",
+      "summary": "Brief executive summary of the defensive matchups and key advantages.",
       "defenseStats": [
         { "position": "TE", "rank": "32nd", "avgAllowed": "65 yds/g", "description": "Team Name defense vs TEs" }
       ],

@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, ChevronRight, RefreshCw, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Calendar, Clock, ChevronRight, RefreshCw, ChevronDown, AlertTriangle, Database } from 'lucide-react';
 import { Game, ScheduleResponse } from '../types';
 import { getNFLSchedule } from '../services/gemini';
 
 interface ScheduleBoardProps {
   onSelectGame: (game: Game) => void;
   selectedGameId?: string;
+  cachedGameIds?: string[];
 }
 
-const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGameId }) => {
+const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGameId, cachedGameIds = [] }) => {
   const [schedule, setSchedule] = useState<ScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState<string>('Current');
@@ -91,30 +92,50 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {schedule?.games?.map((game, idx) => {
                     const isSelected = selectedGameId === game.id;
+                    const isCached = cachedGameIds.includes(game.id);
+                    
+                    // Determine styles based on state
+                    let containerClasses = 'bg-slate-800 border-slate-700 hover:border-slate-500 hover:bg-slate-750';
+                    let textClasses = 'text-slate-200';
+                    let vsClasses = 'text-slate-500';
+
+                    if (isSelected) {
+                        containerClasses = 'bg-indigo-600 border-indigo-500 shadow-lg shadow-indigo-900/50 scale-[1.02]';
+                        textClasses = 'text-white';
+                        vsClasses = 'text-indigo-200';
+                    } else if (isCached) {
+                        // Green style for cached items
+                        containerClasses = 'bg-emerald-950/20 border-emerald-500/40 hover:bg-emerald-950/40 hover:border-emerald-500/60 shadow-md shadow-emerald-900/10';
+                    }
+
                     return (
                         <button
                             key={game.id || idx}
                             onClick={() => onSelectGame(game)}
-                            className={`flex flex-col p-3 rounded-xl border text-left transition-all ${
-                                isSelected 
-                                ? 'bg-indigo-600 border-indigo-500 shadow-lg shadow-indigo-900/50 scale-[1.02]' 
-                                : 'bg-slate-800 border-slate-700 hover:border-slate-500 hover:bg-slate-750'
-                            }`}
+                            className={`flex flex-col p-3 rounded-xl border text-left transition-all relative ${containerClasses}`}
                         >
+                            {isCached && !isSelected && (
+                                <div className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-900/50 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                    <Database size={8} /> READY
+                                </div>
+                            )}
+
                             <div className="flex justify-between items-start w-full mb-2">
-                                <div className="text-xs font-mono text-slate-400 bg-slate-900/50 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <div className={`text-xs font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
                                     <Clock size={10} /> {game.time}
                                 </div>
-                                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                                    {game.date}
-                                </div>
+                                {!isCached && (
+                                    <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                                        {game.date}
+                                    </div>
+                                )}
                             </div>
                             <div className="flex-1 w-full space-y-1">
-                                <div className={`font-bold text-lg ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                                <div className={`font-bold text-lg leading-tight ${textClasses}`}>
                                     {game.awayTeam}
                                 </div>
-                                <div className={`text-xs ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>@</div>
-                                <div className={`font-bold text-lg ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                                <div className={`text-xs ${vsClasses}`}>@</div>
+                                <div className={`font-bold text-lg leading-tight ${textClasses}`}>
                                     {game.homeTeam}
                                 </div>
                             </div>

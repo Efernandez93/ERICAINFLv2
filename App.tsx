@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ScheduleBoard from './components/ScheduleBoard';
 import LegCard from './components/LegCard';
 import SourceList from './components/SourceList';
@@ -6,7 +6,10 @@ import RosterList from './components/RosterList';
 import ParlaySidebar from './components/ParlaySidebar';
 import { analyzeMatchup } from './services/gemini';
 import { AnalysisResult, GroundingSource, ParlayLeg, Game } from './types';
-import { BrainCircuit, Shield, Activity, AlertCircle } from 'lucide-react';
+import { Shield, Activity, AlertCircle, Database } from 'lucide-react';
+
+const CACHE_PREFIX = 'parlay_pro_cache_v1_';
+const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24; // 24 Hours
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -17,7 +20,47 @@ const App: React.FC = () => {
   
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [pinnedLegs, setPinnedLegs] = useState<ParlayLeg[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Default open on desktop
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
+
+  // Load list of cached games on mount
+  useEffect(() => {
+    const keys = Object.keys(localStorage);
+    const cachedIds = keys
+        .filter(k => k.startsWith(CACHE_PREFIX))
+        .map(k => k.replace(CACHE_PREFIX, ''));
+    setCachedGameIds(cachedIds);
+  }, []);
+
+  const saveToCache = (gameId: string, data: any) => {
+    const cacheItem = {
+        timestamp: Date.now(),
+        payload: data
+    };
+    try {
+        localStorage.setItem(`${CACHE_PREFIX}${gameId}`, JSON.stringify(cacheItem));
+        setCachedGameIds(prev => [...new Set([...prev, gameId])]);
+    } catch (e) {
+        console.warn("Cache limit reached or storage error");
+    }
+  };
+
+  const getFromCache = (gameId: string) => {
+    const itemStr = localStorage.getItem(`${CACHE_PREFIX}${gameId}`);
+    if (!itemStr) return null;
+
+    try {
+        const item = JSON.parse(itemStr);
+        // Check expiry
+        if (Date.now() - item.timestamp > CACHE_EXPIRY_MS) {
+            localStorage.removeItem(`${CACHE_PREFIX}${gameId}`);
+            return null;
+        }
+        return item.payload;
+    } catch (e) {
+        return null;
+    }
+  };
 
   const handleSelectGame = async (game: Game) => {
     setSelectedGame(game);
@@ -27,11 +70,29 @@ const App: React.FC = () => {
     setSources([]);
     setRawText("");
 
+    // 1. Check Cache First
+    const cachedData = getFromCache(game.id);
+    if (cachedData) {
+        console.log("Loading from cache...");
+        setResult(cachedData.data);
+        setSources(cachedData.sources);
+        setRawText(cachedData.rawText);
+        setLoading(false);
+        return;
+    }
+
+    // 2. Fetch from API if not cached
     try {
       const response = await analyzeMatchup(game.homeTeam, game.awayTeam);
+      
+      // Save result to state
       setResult(response.data);
       setSources(response.sources);
       setRawText(response.rawText);
+      
+      // Save to Cache
+      saveToCache(game.id, response);
+
     } catch (err) {
       setError("Failed to analyze matchup. Please check your connection and try again.");
     } finally {
@@ -66,13 +127,18 @@ const App: React.FC = () => {
             {/* Header */}
             <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-lg">
                 <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-600/20">
-                        <BrainCircuit className="text-white" size={22} />
+                    <div className="flex items-center gap-4">
+                        <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-indigo-500 shadow-lg shadow-indigo-600/20 bg-slate-800 relative group cursor-pointer">
+                            {/* NOTE: Replace the src below with the URL of the image you uploaded */}
+                            <img 
+                                src="https://api.dicebear.com/7.x/avataaars/svg?seed=Eric&backgroundColor=b6e3f4" 
+                                alt="ERIC AI" 
+                                className="w-full h-full object-cover"
+                            />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold tracking-tight text-white leading-none">Parlay<span className="text-indigo-500">Pro</span> AI</h1>
-                            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">NFL Edition</span>
+                            <h1 className="text-2xl font-bold tracking-tight text-white leading-none">ERIC <span className="text-indigo-500">AI</span></h1>
+                            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Expert Real-time Intelligent Capper</span>
                         </div>
                     </div>
                     <button 
@@ -88,7 +154,8 @@ const App: React.FC = () => {
                 
                 <ScheduleBoard 
                     onSelectGame={handleSelectGame} 
-                    selectedGameId={selectedGame?.id} 
+                    selectedGameId={selectedGame?.id}
+                    cachedGameIds={cachedGameIds} 
                 />
 
                 {error && (
@@ -102,7 +169,8 @@ const App: React.FC = () => {
                 {loading && (
                     <div className="text-center py-20 bg-slate-900/30 rounded-2xl border border-dashed border-slate-800">
                         <div className="inline-block w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p className="text-slate-400 animate-pulse font-mono text-sm">Analyzing defensive schemes vs {selectedGame?.homeTeam}...</p>
+                        <p className="text-slate-400 animate-pulse font-mono text-sm">ERIC is analyzing defensive schemes vs {selectedGame?.homeTeam}...</p>
+                        <p className="text-slate-600 text-xs mt-2">Checking real-time data & stats...</p>
                     </div>
                 )}
 
@@ -110,7 +178,12 @@ const App: React.FC = () => {
                 {!loading && !result && !selectedGame && (
                     <div className="text-center py-20">
                         <h3 className="text-2xl font-bold text-slate-700 mb-2">Select a Game</h3>
-                        <p className="text-slate-500">Choose a matchup from the schedule above to view AI predictions.</p>
+                        <p className="text-slate-500">Choose a matchup from the schedule above to view predictions.</p>
+                        <div className="flex justify-center mt-4 gap-2">
+                             <span className="flex items-center gap-1 text-[10px] text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
+                                <Database size={10} /> GREEN = Cached (Instant Load)
+                             </span>
+                        </div>
                     </div>
                 )}
 
@@ -119,8 +192,13 @@ const App: React.FC = () => {
                 <div className="animate-fade-in space-y-8">
                     
                     {/* Matchup Title */}
-                    <div className="flex items-center gap-4 pb-4 border-b border-slate-800">
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-800">
                         <h2 className="text-3xl font-bold text-white">{result?.matchup}</h2>
+                        {cachedGameIds.includes(selectedGame?.id || '') && (
+                            <span className="text-xs font-mono text-emerald-500 flex items-center gap-1 bg-emerald-500/10 px-2 py-1 rounded">
+                                <Database size={12} /> Data Cached
+                            </span>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -153,7 +231,7 @@ const App: React.FC = () => {
                             
                             {result?.summary && (
                                 <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Executive Summary</h3>
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">ERIC's Analysis</h3>
                                     <p className="text-sm text-slate-300 leading-relaxed">{result.summary}</p>
                                 </div>
                             )}
@@ -163,7 +241,7 @@ const App: React.FC = () => {
                         <div className="lg:col-span-2">
                             <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
                             <Activity className="text-emerald-400" size={20} />
-                            Recommended Props
+                            ERIC's Recommended Props
                             </h3>
 
                             {result?.legs ? (
@@ -195,7 +273,7 @@ const App: React.FC = () => {
                     {/* Roster Section */}
                     {result?.rosters && (
                         <div className="animate-fade-in border-t border-slate-800 pt-8">
-                            <h3 className="text-xl font-bold text-white mb-4">Key Starters & Betting Options</h3>
+                            <h3 className="text-xl font-bold text-white mb-4">Key Starters & Last 5 Games</h3>
                             <RosterList 
                                 teamA={result.rosters.teamA} 
                                 teamB={result.rosters.teamB} 
