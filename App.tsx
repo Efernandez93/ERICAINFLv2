@@ -6,9 +6,9 @@ import SourceList from './components/SourceList';
 import RosterList from './components/RosterList';
 import ParlaySidebar from './components/ParlaySidebar';
 import { getKeyPlayersAndStats, getDeepAnalysis } from './services/gemini';
-import { StorageService, CachedMatchup } from './services/storage';
+import { StorageService } from './services/storage';
 import { AnalysisResult, GroundingSource, ParlayLeg, Game, TeamRoster } from './types';
-import { Shield, Activity, AlertCircle, Database, HardDrive, Cloud, CloudOff, Terminal, Zap, Users } from 'lucide-react';
+import { Shield, Activity, AlertCircle, Database, HardDrive, Terminal } from 'lucide-react';
 
 const App: React.FC = () => {
   const [loadingStage, setLoadingStage] = useState<'idle' | 'rosters' | 'analysis'>('idle');
@@ -32,7 +32,6 @@ const App: React.FC = () => {
   });
 
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
-  const [isCloudSync, setIsCloudSync] = useState(false);
   const FALLBACK_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png";
 
   const streamEndRef = useRef<HTMLDivElement>(null);
@@ -49,7 +48,6 @@ const App: React.FC = () => {
     const loadCacheIndex = async () => {
         const ids = await StorageService.getCachedGameIds();
         setCachedGameIds(ids);
-        setIsCloudSync(StorageService.isCloudActive());
     };
     loadCacheIndex();
 
@@ -404,19 +402,8 @@ const App: React.FC = () => {
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800">
                             <HardDrive size={10} className="text-indigo-500" />
-                            <span className="text-slate-400">Local Cache Active</span>
+                            <span className="text-slate-400">Local Storage Active</span>
                         </div>
-                        {isCloudSync ? (
-                            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-950/30 border border-emerald-900">
-                                <Cloud size={10} className="text-emerald-500" />
-                                <span className="text-emerald-400">Cloud Sync Active</span>
-                            </div>
-                        ) : (
-                             <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800 opacity-50" title="Configure Firebase in storage.ts">
-                                <CloudOff size={10} className="text-slate-500" />
-                                <span className="text-slate-500">Cloud Sync Inactive</span>
-                            </div>
-                        )}
                     </div>
                 </div>
             </footer>

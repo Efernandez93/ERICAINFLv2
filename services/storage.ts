@@ -1,20 +1,15 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, Timestamp, terminate } from 'firebase/firestore';
 import { AnalysisResult, GroundingSource } from '../types';
 
 /**
- * FIREBASE CONFIGURATION
+ * STORAGE SERVICE (LOCAL ONLY)
+ * 
+ * Migrated from Firebase to LocalStorage to resolve connection/permission errors.
+ * Vercel Blob requires a server-side token exchange which is not available
+ * in this client-side Vite application. 
+ * 
+ * This service implements a robust LocalStorage pattern with LRU (Least Recently Used)
+ * eviction if the quota is exceeded.
  */
-const firebaseConfig = {
-  apiKey: "AIzaSyDPJMHCJTBcdbI99rr9IwWVsklECYN9dkw",
-  authDomain: "ericai-967a6.firebaseapp.com",
-  databaseURL: "https://ericai-967a6-default-rtdb.firebaseio.com",
-  projectId: "ericai-967a6",
-  storageBucket: "ericai-967a6.firebasestorage.app",
-  messagingSenderId: "370213861406",
-  appId: "1:370213861406:web:ced0f5ed7819825d99d60f",
-  measurementId: "G-573MPLTMT3"
-};
 
 const CACHE_PREFIX = 'eric_ai_cache_v1_';
 const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24; // 24 Hours
@@ -30,64 +25,14 @@ interface CacheItem {
   payload: CachedMatchup;
 }
 
-// Initialize Firebase safely
-let db: any = null;
-let isFirebaseActive = false;
-let isFirebaseDisabled = false; // Runtime kill switch if API is broken
-
-try {
-    const app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-    isFirebaseActive = true;
-    console.log("[STORAGE] Firebase initialized");
-} catch (e) {
-    console.warn("[STORAGE] Failed to initialize Firebase:", e);
-}
-
-const handleFirebaseError = async (e: any) => {
-    // Detect if API is not enabled, permission denied, or client is offline due to config
-    const isConfigError = 
-        e?.code === 'permission-denied' || 
-        e?.message?.includes('API has not been used') || 
-        e?.code === 'failed-precondition' ||
-        e?.code === 'unavailable' ||
-        e?.message?.includes('Cloud Firestore backend') ||
-        e?.message?.includes('client is offline');
-
-    if (isConfigError) {
-        if (!isFirebaseDisabled) {
-            console.warn("[STORAGE] Cloud Sync unavailable. Switching to Local-Only mode.");
-            if (e?.code === 'permission-denied') {
-                console.warn("Hint: Check Firestore Security Rules. Ensure 'allow read, write: if true;' is set for development.");
-            }
-            if (e?.message?.includes('API has not been used')) {
-                console.warn("Hint: Ensure Cloud Firestore API is enabled in Google Cloud Console.");
-            }
-
-            isFirebaseDisabled = true;
-            
-            // STOP the SDK from retrying and spamming the console
-            if (db) {
-                try {
-                    await terminate(db);
-                    console.log("[STORAGE] Firestore connection terminated to prevent retry errors.");
-                } catch (termErr) {
-                    // Ignore termination errors
-                }
-            }
-        }
-    } else {
-        // Only log actual unexpected errors
-        console.error("[STORAGE] Firestore Error:", e);
-    }
-};
-
 export const StorageService = {
   
-  isCloudActive: () => isFirebaseActive && !isFirebaseDisabled,
+  // Always return true for local mode
+  isCloudActive: () => false,
 
   /**
-   * Saves analysis result to storage (Firebase + LocalStorage).
+   * Saves analysis result to LocalStorage.
+   * Handles quota limits by removing oldest entries.
    */
   saveMatchup: async (gameId: string, data: CachedMatchup): Promise<void> => {
     const item: CacheItem = {
@@ -95,112 +40,109 @@ export const StorageService = {
       payload: data
     };
 
-    // 1. Save to LocalStorage (Fast, immediate access for this user)
-    try {
-      localStorage.setItem(`${CACHE_PREFIX}${gameId}`, JSON.stringify(item));
-    } catch (e) {
-      console.warn("LocalStorage quota exceeded", e);
-    }
+    const key = `${CACHE_PREFIX}${gameId}`;
+    const value = JSON.stringify(item);
 
-    // 2. Save to Firebase (Shared access for all users)
-    if (isFirebaseActive && db && !isFirebaseDisabled) {
-      try {
-        await setDoc(doc(db, "matchups", gameId), {
-            ...item,
-            createdAt: Timestamp.now()
-        });
-        console.log(`[STORAGE] Saved ${gameId} to Firestore`);
-      } catch (e) {
-        handleFirebaseError(e);
+    try {
+      localStorage.setItem(key, value);
+      console.log(`[STORAGE] Saved ${gameId} to LocalStorage`);
+    } catch (e: any) {
+      if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+        console.warn("[STORAGE] Quota exceeded. Cleaning up old cache...");
+        StorageService.pruneCache();
+        try {
+            // Try one more time after pruning
+            localStorage.setItem(key, value);
+        } catch (retryError) {
+            console.error("[STORAGE] Failed to save even after pruning", retryError);
+        }
       }
     }
   },
 
   /**
-   * Retrieves analysis from storage.
-   * Priority: LocalStorage (Fastest) -> Firestore (Shared)
+   * Retrieves analysis from LocalStorage.
    */
   getMatchup: async (gameId: string): Promise<CachedMatchup | null> => {
-    // 1. Check LocalStorage first
     const localItemStr = localStorage.getItem(`${CACHE_PREFIX}${gameId}`);
-    if (localItemStr) {
-      try {
-        const item: CacheItem = JSON.parse(localItemStr);
-        if (Date.now() - item.timestamp < CACHE_EXPIRY_MS) {
-          console.log(`[STORAGE] Hit Local Cache for ${gameId}`);
-          return item.payload;
-        } else {
-            localStorage.removeItem(`${CACHE_PREFIX}${gameId}`);
-        }
-      } catch (e) { /* Ignore parse errors */ }
+    
+    if (!localItemStr) return null;
+
+    try {
+      const item: CacheItem = JSON.parse(localItemStr);
+      
+      // Check Expiry
+      if (Date.now() - item.timestamp < CACHE_EXPIRY_MS) {
+        console.log(`[STORAGE] Hit Local Cache for ${gameId}`);
+        return item.payload;
+      } else {
+        console.log(`[STORAGE] Expired Cache for ${gameId}`);
+        localStorage.removeItem(`${CACHE_PREFIX}${gameId}`);
+        return null;
+      }
+    } catch (e) { 
+        console.error("Cache Parse Error", e);
+        return null; 
     }
-
-    // 2. Check Firebase if local miss
-    if (isFirebaseActive && db && !isFirebaseDisabled) {
-        try {
-            const docRef = doc(db, "matchups", gameId);
-            const docSnap = await getDoc(docRef);
-
-            if (docSnap.exists()) {
-                const data = docSnap.data() as any; // Cast generic data
-                // Basic expiry check on DB data (optional, but good for freshness)
-                if (Date.now() - data.timestamp < CACHE_EXPIRY_MS) {
-                     console.log(`[STORAGE] Hit Cloud Cache for ${gameId}`);
-                     
-                     // Re-hydrate local cache for next time
-                     localStorage.setItem(`${CACHE_PREFIX}${gameId}`, JSON.stringify({
-                         timestamp: data.timestamp,
-                         payload: data.payload
-                     }));
-
-                     return data.payload as CachedMatchup;
-                }
-            }
-        } catch (e) {
-            handleFirebaseError(e);
-        }
-    }
-
-    return null;
   },
 
   /**
    * Returns a list of all game IDs currently in the cache.
-   * Merges LocalStorage and Firestore availability.
    */
   getCachedGameIds: async (): Promise<string[]> => {
-    const ids = new Set<string>();
-
-    // Get Local IDs
-    Object.keys(localStorage).forEach(key => {
-        if (key.startsWith(CACHE_PREFIX)) {
-            ids.add(key.replace(CACHE_PREFIX, ''));
+    const ids: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(CACHE_PREFIX)) {
+            ids.push(key.replace(CACHE_PREFIX, ''));
         }
-    });
+    }
+    return ids;
+  },
 
-    // Get Cloud IDs
-    if (isFirebaseActive && db && !isFirebaseDisabled) {
-        try {
-            const querySnapshot = await getDocs(collection(db, "matchups"));
-            querySnapshot.forEach((doc) => {
-                ids.add(doc.id);
-            });
-        } catch (e) {
-            handleFirebaseError(e);
+  /**
+   * Helper to remove oldest items when storage is full
+   */
+  pruneCache: () => {
+    const items: {key: string, timestamp: number}[] = [];
+    
+    // 1. Gather all cache items
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(CACHE_PREFIX)) {
+            try {
+                const item: CacheItem = JSON.parse(localStorage.getItem(key) || '{}');
+                items.push({ key, timestamp: item.timestamp || 0 });
+            } catch (e) {
+                // Corrupt item, mark for deletion
+                items.push({ key, timestamp: 0 }); 
+            }
         }
     }
 
-    return Array.from(ids);
+    // 2. Sort by oldest first
+    items.sort((a, b) => a.timestamp - b.timestamp);
+
+    // 3. Remove the oldest 5 items
+    const itemsToRemove = items.slice(0, 5);
+    itemsToRemove.forEach(item => {
+        localStorage.removeItem(item.key);
+        console.log(`[STORAGE] Pruned ${item.key}`);
+    });
   },
 
   /**
    * Clear local cache only (Admin utility)
    */
   clearLocalCache: (): void => {
-    Object.keys(localStorage).forEach(key => {
-      if (key.startsWith(CACHE_PREFIX)) {
-        localStorage.removeItem(key);
-      }
-    });
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(CACHE_PREFIX)) {
+            keysToRemove.push(key);
+        }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    console.log("[STORAGE] Cache Cleared");
   }
 };
