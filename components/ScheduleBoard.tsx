@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, ChevronRight, RefreshCw, ChevronDown, AlertTriangle, Database } from 'lucide-react';
+import { Calendar, Clock, ChevronRight, RefreshCw, ChevronDown, AlertTriangle, Database, Zap } from 'lucide-react';
 import { Game, ScheduleResponse } from '../types';
 import { getNFLSchedule } from '../services/gemini';
 
@@ -14,6 +14,7 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState<string>('Current');
   const [error, setError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<{ [key: string]: string }>({});
 
   const fetchSchedule = async (week?: string) => {
     setLoading(true);
@@ -35,15 +36,99 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
     fetchSchedule(selectedWeek);
   }, [selectedWeek]);
 
+  // Countdown timer effect
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!schedule?.games) return;
+
+      const newCountdown: { [key: string]: string } = {};
+      schedule.games.forEach(game => {
+        const gameDateTime = getGameDateTime(game.date, game.time);
+        const now = new Date();
+        const diff = gameDateTime.getTime() - now.getTime();
+        newCountdown[game.id] = formatCountdown(diff);
+      });
+      setCountdown(newCountdown);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [schedule?.games]);
+
+  // Convert ET time to CST
+  const convertToCSTTime = (etTime: string): string => {
+    try {
+      // Parse time (e.g., "1:00 PM ET" or "1:00 PM")
+      const timeStr = etTime.replace(' ET', '').trim();
+      const [time, period] = timeStr.split(' ');
+      const [hours, minutes] = time.split(':');
+
+      // Convert to 24-hour format
+      let hour24 = parseInt(hours);
+      if (period === 'PM' && hour24 !== 12) hour24 += 12;
+      if (period === 'AM' && hour24 === 12) hour24 = 0;
+
+      // Convert ET to CST (subtract 1 hour)
+      let cstHour = hour24 - 1;
+      if (cstHour < 0) cstHour += 24;
+
+      // Convert back to 12-hour format
+      const cstPeriod = cstHour >= 12 ? 'PM' : 'AM';
+      const cstHour12 = cstHour === 0 ? 12 : cstHour > 12 ? cstHour - 12 : cstHour;
+
+      return `${cstHour12}:${minutes} ${cstPeriod} CST`;
+    } catch (e) {
+      return etTime; // Return original if parsing fails
+    }
+  };
+
+  // Get game datetime in UTC for countdown calculations
+  const getGameDateTime = (gameDate: string, gameTime: string): Date => {
+    try {
+      const timeStr = gameTime.replace(' ET', '').trim();
+      const [time, period] = timeStr.split(' ');
+      const [hours, minutes] = time.split(':');
+
+      // Convert ET to UTC (ET is UTC-5 or UTC-4 during DST, we'll use UTC-5)
+      let hour24 = parseInt(hours);
+      if (period === 'PM' && hour24 !== 12) hour24 += 12;
+      if (period === 'AM' && hour24 === 12) hour24 = 0;
+
+      // Parse date and create date object in ET
+      const dateObj = new Date(`${gameDate} ${hour24}:${minutes}:00`);
+      return dateObj;
+    } catch (e) {
+      return new Date();
+    }
+  };
+
+  // Format countdown time (e.g., "1d 3h 45m")
+  const formatCountdown = (ms: number): string => {
+    if (ms <= 0) return 'STARTING';
+
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) {
+      return `${days}d ${hours % 24}h ${minutes % 60}m`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes % 60}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${seconds % 60}s`;
+    } else {
+      return `${seconds}s`;
+    }
+  };
+
   // Check if a game has already started
   const isGameStarted = (gameDate: string, gameTime: string): boolean => {
     try {
-      // Parse game date and time (e.g., "Nov 17, 2024" and "1:00 PM ET")
-      const gameDateTime = new Date(`${gameDate} ${gameTime.replace(' ET', '')}`);
+      const gameDateTime = getGameDateTime(gameDate, gameTime);
       const now = new Date();
       return gameDateTime <= now;
     } catch (e) {
-      return false; // If parsing fails, assume game hasn't started
+      return false;
     }
   };
 
@@ -147,10 +232,15 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                                 </div>
                             )}
 
-                            <div className="flex justify-between items-start w-full mb-1">
-                                <div className={`text-[9px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${gameStarted ? 'text-red-300 bg-red-900/40' : isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
-                                    <Clock size={9} /> {game.time}
+                            <div className="flex flex-col gap-0.5 w-full mb-1">
+                                <div className={`text-[8px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${gameStarted ? 'text-red-300 bg-red-900/40' : isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
+                                    <Clock size={8} /> {convertToCSTTime(game.time)}
                                 </div>
+                                {!gameStarted && (
+                                    <div className={`text-[7px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${isSelected ? 'text-indigo-100 bg-indigo-700/60' : 'text-amber-300 bg-amber-900/40'}`}>
+                                        <Zap size={7} /> {countdown[game.id] || '...'}
+                                    </div>
+                                )}
                             </div>
                             
                             <div className="flex items-center justify-between w-full px-1">
