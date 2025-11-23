@@ -1,9 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
 import { AnalysisResult, GroundingSource, ScheduleResponse, Game } from "../types";
 
+// DEBUG: Safe check for API key presence (do not log the actual key)
+const apiKey = process.env.API_KEY;
+console.log(`[DEBUG] API Key status: ${apiKey ? 'Present' : 'Missing (Check Environment Variables)'}`);
+
+if (!apiKey) {
+    console.error("CRITICAL: API_KEY is missing from process.env. The app will not function correctly.");
+}
+
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleResponse | null; rawText: string }> => {
+export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleResponse | null; rawText: string; error?: string }> => {
   const today = new Date().toDateString();
   const weekQuery = week ? `NFL ${week}` : `the CURRENT or UPCOMING week's NFL schedule relative to today: ${today}`;
   
@@ -25,6 +33,10 @@ export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleRes
   `;
 
   try {
+    if (!process.env.API_KEY) {
+        throw new Error("API_KEY_MISSING");
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
@@ -46,9 +58,17 @@ export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleRes
     }
 
     return { data: parsedData, rawText: text };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Schedule Fetch Error:", error);
-    return { data: null, rawText: "" };
+    let errorMessage = "Failed to load schedule.";
+    
+    if (error.message.includes("API_KEY_MISSING") || error.toString().includes("API key")) {
+        errorMessage = "API Key is missing or invalid.";
+    } else if (error.message.includes("403")) {
+        errorMessage = "API Key not authorized (Check quotas or billing).";
+    }
+
+    return { data: null, rawText: "", error: errorMessage };
   }
 };
 
@@ -57,6 +77,10 @@ export const analyzeMatchup = async (
   teamB: string
 ): Promise<{ data: AnalysisResult | null; sources: GroundingSource[]; rawText: string }> => {
   
+  if (!process.env.API_KEY) {
+      throw new Error("API Key is missing. Please check your environment variables.");
+  }
+
   const prompt = `
     You are an expert NFL betting analyst.
     Analyze the upcoming NFL matchup between ${teamA} and ${teamB}.

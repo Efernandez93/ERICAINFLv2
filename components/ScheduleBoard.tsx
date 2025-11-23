@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, ChevronRight, RefreshCw, ChevronDown } from 'lucide-react';
+import { Calendar, Clock, ChevronRight, RefreshCw, ChevronDown, AlertTriangle } from 'lucide-react';
 import { Game, ScheduleResponse } from '../types';
 import { getNFLSchedule } from '../services/gemini';
 
@@ -12,13 +12,19 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
   const [schedule, setSchedule] = useState<ScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState<string>('Current');
+  const [error, setError] = useState<string | null>(null);
 
   const fetchSchedule = async (week?: string) => {
     setLoading(true);
+    setError(null);
     // If 'Current' is selected, pass undefined to let the AI find the current week
     const weekParam = week === 'Current' ? undefined : week;
-    const { data } = await getNFLSchedule(weekParam);
-    if (data) {
+    
+    const { data, error: apiError } = await getNFLSchedule(weekParam);
+    
+    if (apiError) {
+        setError(apiError);
+    } else if (data) {
         setSchedule(data);
     }
     setLoading(false);
@@ -62,13 +68,26 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
             </div>
         </div>
 
+        {error && (
+            <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-6 text-center mb-6">
+                <AlertTriangle className="mx-auto text-red-500 mb-2" size={32} />
+                <h3 className="text-red-400 font-bold text-lg mb-1">Configuration Error</h3>
+                <p className="text-slate-300 text-sm mb-2">{error}</p>
+                {error.includes("API Key") && (
+                    <div className="text-xs text-slate-500 bg-slate-900/50 p-2 rounded inline-block mt-2">
+                        Tip: Check your Vercel Environment Variables. The key should be named <code>API_KEY</code>.
+                    </div>
+                )}
+            </div>
+        )}
+
         {loading ? (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {[1,2,3,4,5,6].map(i => (
                     <div key={i} className="h-24 bg-slate-800/50 rounded-xl animate-pulse border border-slate-800"></div>
                 ))}
              </div>
-        ) : (
+        ) : !error ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {schedule?.games?.map((game, idx) => {
                     const isSelected = selectedGameId === game.id;
@@ -108,11 +127,12 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                     )
                 })}
             </div>
-        )}
-        {!loading && (!schedule?.games || schedule.games.length === 0) && (
+        ) : null}
+        
+        {!loading && !error && (!schedule?.games || schedule.games.length === 0) && (
             <div className="p-6 text-center border border-dashed border-slate-700 rounded-xl text-slate-500">
                 <p>No games found for this week or unable to load schedule.</p>
-                <p className="text-xs mt-2">Check your API key configuration or try another week.</p>
+                <p className="text-xs mt-2">The AI might be taking a nap. Try hitting refresh.</p>
             </div>
         )}
     </div>
