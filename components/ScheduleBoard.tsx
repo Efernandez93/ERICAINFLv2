@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, ChevronRight, RefreshCw } from 'lucide-react';
+import { Calendar, Clock, ChevronRight, RefreshCw, ChevronDown } from 'lucide-react';
 import { Game, ScheduleResponse } from '../types';
 import { getNFLSchedule } from '../services/gemini';
 
@@ -11,10 +11,13 @@ interface ScheduleBoardProps {
 const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGameId }) => {
   const [schedule, setSchedule] = useState<ScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedWeek, setSelectedWeek] = useState<string>('Current');
 
-  const fetchSchedule = async () => {
+  const fetchSchedule = async (week?: string) => {
     setLoading(true);
-    const { data } = await getNFLSchedule();
+    // If 'Current' is selected, pass undefined to let the AI find the current week
+    const weekParam = week === 'Current' ? undefined : week;
+    const { data } = await getNFLSchedule(weekParam);
     if (data) {
         setSchedule(data);
     }
@@ -22,19 +25,41 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
   };
 
   useEffect(() => {
-    fetchSchedule();
-  }, []);
+    fetchSchedule(selectedWeek);
+  }, [selectedWeek]);
+
+  const weeks = ['Current', ...Array.from({ length: 18 }, (_, i) => `Week ${i + 1}`)];
 
   return (
     <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <Calendar className="text-indigo-500" size={20} />
                 {loading ? 'Loading Schedule...' : schedule?.week || 'NFL Schedule'}
             </h2>
-            <button onClick={fetchSchedule} className="text-slate-500 hover:text-white transition-colors">
-                <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            </button>
+            
+            <div className="flex items-center gap-2">
+                <div className="relative">
+                    <select 
+                        value={selectedWeek}
+                        onChange={(e) => setSelectedWeek(e.target.value)}
+                        className="appearance-none bg-slate-800 text-slate-200 border border-slate-700 pl-3 pr-8 py-1.5 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                    >
+                        {weeks.map(week => (
+                            <option key={week} value={week}>{week}</option>
+                        ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                </div>
+
+                <button 
+                    onClick={() => fetchSchedule(selectedWeek)} 
+                    className="p-1.5 text-slate-500 hover:text-white transition-colors bg-slate-800 rounded-lg border border-slate-700 hover:bg-slate-700"
+                    title="Refresh Schedule"
+                >
+                    <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                </button>
+            </div>
         </div>
 
         {loading ? (
@@ -84,9 +109,10 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                 })}
             </div>
         )}
-        {!loading && !schedule?.games && (
+        {!loading && (!schedule?.games || schedule.games.length === 0) && (
             <div className="p-6 text-center border border-dashed border-slate-700 rounded-xl text-slate-500">
-                Unable to load schedule. Please try refreshing.
+                <p>No games found for this week or unable to load schedule.</p>
+                <p className="text-xs mt-2">Check your API key configuration or try another week.</p>
             </div>
         )}
     </div>

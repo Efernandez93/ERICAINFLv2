@@ -3,14 +3,16 @@ import { AnalysisResult, GroundingSource, ScheduleResponse, Game } from "../type
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const getNFLSchedule = async (): Promise<{ data: ScheduleResponse | null; rawText: string }> => {
+export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleResponse | null; rawText: string }> => {
   const today = new Date().toDateString();
+  const weekQuery = week ? `NFL ${week}` : `the CURRENT or UPCOMING week's NFL schedule relative to today: ${today}`;
+  
   const prompt = `
     You are an NFL scheduler assistant.
-    Find the CURRENT or UPCOMING week's NFL schedule relative to today: ${today}.
+    Find the schedule for ${weekQuery}.
     
     Task:
-    1. Use Google Search to find the schedule for this week.
+    1. Use Google Search to find the schedule for the requested week.
     2. Return a JSON object containing the week number/label and the list of games.
     
     JSON Structure:
