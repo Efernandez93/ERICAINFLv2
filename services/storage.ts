@@ -1,6 +1,7 @@
+
 import { AnalysisResult, GroundingSource } from '../types';
 import { db } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 
 /**
  * STORAGE SERVICE (HYBRID)
@@ -34,6 +35,32 @@ export const StorageService = {
   isCloudActive: () => !!db && !isCloudDisabled,
 
   /**
+   * ACTUALLY tests the connection.
+   * Returns true if we can reach Firestore, false otherwise.
+   */
+  verifyConnection: async (): Promise<boolean> => {
+    if (!db) {
+        isCloudDisabled = true;
+        return false;
+    }
+
+    try {
+        // Try to read a dummy document.
+        // Even if it doesn't exist, if we don't get an error, we are CONNECTED.
+        const docRef = doc(db, "system", "ping");
+        await getDoc(docRef);
+        console.log("[STORAGE] Connection Verified: ONLINE");
+        isCloudDisabled = false;
+        return true;
+    } catch (e: any) {
+        console.warn(`[STORAGE] Connection Verification Failed: ${e.code || e.message}`);
+        // Common codes: 'permission-denied', 'unavailable', 'not-found' (if project missing)
+        isCloudDisabled = true;
+        return false;
+    }
+  },
+
+  /**
    * Saves analysis result to Storage (Cloud -> Fallback Local).
    */
   saveMatchup: async (gameId: string, data: CachedMatchup): Promise<void> => {
@@ -53,7 +80,6 @@ export const StorageService = {
             console.warn(`[STORAGE] Firestore save failed: ${e.code || e.message}`);
             // If the database doesn't exist or permissions are wrong, stop trying for this session
             if (e.code === 'not-found' || e.code === 'permission-denied' || e.code === 'unavailable') {
-                console.warn("[STORAGE] Disabling Cloud Storage for this session. Please check Firebase Console setup.");
                 isCloudDisabled = true;
             }
         }
@@ -124,18 +150,37 @@ export const StorageService = {
   },
 
   /**
-   * Returns a list of cached game IDs (Local Only for speed, or could expand to query firestore)
-   * Currently keeps this local for immediate UI feedback.
+   * Returns a list of cached game IDs from BOTH LocalStorage and Cloud.
+   * This ensures devices sync their "green" status.
    */
   getCachedGameIds: async (): Promise<string[]> => {
-    const ids: string[] = [];
+    const ids = new Set<string>();
+
+    // 1. LocalStorage (Always check this first, it's instant)
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.startsWith(CACHE_PREFIX)) {
-            ids.push(key.replace(CACHE_PREFIX, ''));
+            ids.add(key.replace(CACHE_PREFIX, ''));
         }
     }
-    return ids;
+
+    // 2. Firestore (If connected, fetch list of all analyzed games)
+    if (db && !isCloudDisabled) {
+        try {
+            const querySnapshot = await getDocs(collection(db, "matchups"));
+            querySnapshot.forEach((doc) => {
+                ids.add(doc.id);
+            });
+            console.log(`[STORAGE] Synced ${querySnapshot.size} games from Cloud`);
+        } catch (e: any) {
+            console.warn("[STORAGE] Failed to fetch cloud IDs:", e);
+             if (e.code === 'not-found' || e.code === 'permission-denied' || e.code === 'unavailable') {
+                isCloudDisabled = true;
+            }
+        }
+    }
+
+    return Array.from(ids);
   },
 
   pruneCache: () => {

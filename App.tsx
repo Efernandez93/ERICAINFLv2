@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import ScheduleBoard from './components/ScheduleBoard';
 import LegCard from './components/LegCard';
@@ -7,7 +8,7 @@ import ParlaySidebar from './components/ParlaySidebar';
 import { getKeyPlayersAndStats, getDeepAnalysis } from './services/gemini';
 import { StorageService } from './services/storage';
 import { AnalysisResult, GroundingSource, ParlayLeg, Game, TeamRoster } from './types';
-import { Shield, Activity, AlertCircle, Database, HardDrive, Terminal, Cloud, CloudOff } from 'lucide-react';
+import { Shield, Activity, AlertCircle, Database, HardDrive, Terminal, Cloud, CloudOff, Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [loadingStage, setLoadingStage] = useState<'idle' | 'rosters' | 'analysis'>('idle');
@@ -31,7 +32,8 @@ const App: React.FC = () => {
   });
 
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
-  const [isCloudActive, setIsCloudActive] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<'checking' | 'connected' | 'offline'>('checking');
+  
   const FALLBACK_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png";
 
   const streamEndRef = useRef<HTMLDivElement>(null);
@@ -43,14 +45,24 @@ const App: React.FC = () => {
     }
   }, [streamingText]);
 
-  // Load list of cached games on mount
+  // Load list of cached games on mount AND verify cloud connection
   useEffect(() => {
-    const loadCacheIndex = async () => {
-        const ids = await StorageService.getCachedGameIds();
-        setCachedGameIds(ids);
-        setIsCloudActive(StorageService.isCloudActive());
+    const initApp = async () => {
+        // 1. Get Local Cache IDs (Instant)
+        const localIds = await StorageService.getCachedGameIds();
+        setCachedGameIds(localIds);
+
+        // 2. Verify Cloud Connection
+        const isConnected = await StorageService.verifyConnection();
+        setCloudStatus(isConnected ? 'connected' : 'offline');
+
+        // 3. If Cloud is Connected, Re-sync (Pulls in desktop data to mobile)
+        if (isConnected) {
+            const syncedIds = await StorageService.getCachedGameIds();
+            setCachedGameIds(syncedIds);
+        }
     };
-    loadCacheIndex();
+    initApp();
 
     const handleResize = () => {
         if (window.innerWidth < 1024) {
@@ -85,8 +97,6 @@ const App: React.FC = () => {
             setSources(cachedData.sources);
             setRawText(cachedData.rawText);
             setLoadingStage('idle');
-            // Update cloud status in case it changed during fetch
-            setIsCloudActive(StorageService.isCloudActive());
             return;
         }
 
@@ -129,8 +139,6 @@ const App: React.FC = () => {
                 rawText: analysisResponse.rawText
             });
             setCachedGameIds(prev => [...new Set([...prev, game.id])]);
-            // Update cloud status in case save triggered circuit breaker
-            setIsCloudActive(StorageService.isCloudActive());
         }
 
     } catch (err) {
@@ -405,17 +413,27 @@ const App: React.FC = () => {
                 <div className="max-w-6xl mx-auto flex items-center justify-between text-[10px] text-slate-600">
                     <span>ERIC AI v1.3</span>
                     <div className="flex items-center gap-4">
-                        {isCloudActive ? (
-                            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-emerald-500/30 text-emerald-500">
+                        {cloudStatus === 'checking' && (
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-indigo-500/30 text-indigo-400">
+                                <Loader2 size={10} className="animate-spin" />
+                                <span>Verifying Connection...</span>
+                            </div>
+                        )}
+                        
+                        {cloudStatus === 'connected' && (
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-emerald-500/30 text-emerald-500 animate-fade-in">
                                 <Cloud size={10} />
                                 <span>Cloud Connected</span>
                             </div>
-                        ) : (
-                            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-400">
+                        )}
+                        
+                        {cloudStatus === 'offline' && (
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-orange-500/30 text-orange-400 animate-fade-in">
                                 <CloudOff size={10} />
                                 <span>Local Storage Mode</span>
                             </div>
                         )}
+                        
                         <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800">
                             <HardDrive size={10} className="text-indigo-500" />
                             <span className="text-slate-400">Cache Active</span>
