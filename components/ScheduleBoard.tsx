@@ -20,9 +20,9 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
     setError(null);
     // If 'Current' is selected, pass undefined to let the AI find the current week
     const weekParam = week === 'Current' ? undefined : week;
-    
+
     const { data, error: apiError } = await getNFLSchedule(weekParam);
-    
+
     if (apiError) {
         setError(apiError);
     } else if (data) {
@@ -34,6 +34,18 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
   useEffect(() => {
     fetchSchedule(selectedWeek);
   }, [selectedWeek]);
+
+  // Check if a game has already started
+  const isGameStarted = (gameDate: string, gameTime: string): boolean => {
+    try {
+      // Parse game date and time (e.g., "Nov 17, 2024" and "1:00 PM ET")
+      const gameDateTime = new Date(`${gameDate} ${gameTime.replace(' ET', '')}`);
+      const now = new Date();
+      return gameDateTime <= now;
+    } catch (e) {
+      return false; // If parsing fails, assume game hasn't started
+    }
+  };
 
   const weeks = ['Current', ...Array.from({ length: 18 }, (_, i) => `Week ${i + 1}`)];
   const FALLBACK_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png";
@@ -94,7 +106,8 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                 {schedule?.games?.map((game, idx) => {
                     const isSelected = selectedGameId === game.id;
                     const isCached = cachedGameIds.includes(game.id);
-                    
+                    const gameStarted = isGameStarted(game.date, game.time);
+
                     // Determine styles based on state
                     let containerClasses = 'bg-slate-800 border-slate-700 hover:border-slate-500 hover:bg-slate-750';
                     let textClasses = 'text-slate-200';
@@ -104,6 +117,11 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                         containerClasses = 'bg-indigo-600 border-indigo-500 shadow-lg shadow-indigo-900/50 scale-[1.02]';
                         textClasses = 'text-white';
                         vsClasses = 'text-indigo-200';
+                    } else if (gameStarted) {
+                        // Red style for games that have already started
+                        containerClasses = 'bg-red-950/30 border-red-500/50 hover:bg-red-950/50 hover:border-red-500/70 shadow-md shadow-red-900/10 opacity-75';
+                        textClasses = 'text-red-200';
+                        vsClasses = 'text-red-400';
                     } else if (isCached) {
                         // Green style for cached items
                         containerClasses = 'bg-emerald-950/20 border-emerald-500/40 hover:bg-emerald-950/40 hover:border-emerald-500/60 shadow-md shadow-emerald-900/10';
@@ -114,15 +132,23 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
                             key={game.id || idx}
                             onClick={() => onSelectGame(game)}
                             className={`flex flex-col p-2 rounded-xl border text-left transition-all relative ${containerClasses}`}
+                            disabled={gameStarted}
+                            title={gameStarted ? 'This game has already started' : ''}
                         >
-                            {isCached && !isSelected && (
+                            {gameStarted && !isSelected && (
+                                <div className="absolute top-1 right-1 text-[8px] font-bold text-red-300 bg-red-900/70 px-1.5 py-0.5 rounded border border-red-500/30">
+                                    GAME STARTED
+                                </div>
+                            )}
+
+                            {isCached && !isSelected && !gameStarted && (
                                 <div className="absolute top-1 right-1 flex items-center gap-0.5 text-[8px] font-bold text-emerald-400 bg-emerald-900/50 px-1 py-0.5 rounded border border-emerald-500/20">
                                     <Database size={8} /> READY
                                 </div>
                             )}
 
                             <div className="flex justify-between items-start w-full mb-1">
-                                <div className={`text-[9px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
+                                <div className={`text-[9px] font-mono px-1.5 py-0.5 rounded flex items-center gap-1 ${gameStarted ? 'text-red-300 bg-red-900/40' : isSelected ? 'text-indigo-200 bg-indigo-700' : 'text-slate-400 bg-slate-900/50'}`}>
                                     <Clock size={9} /> {game.time}
                                 </div>
                             </div>
