@@ -107,10 +107,14 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
       // Create date object
       const dateObj = new Date(`${dateStr} ${hour24}:${minutes}:00`);
 
-      // If the parsed date is in the future but far away, and current date suggests it might be next season, use next year
+      // Smart year detection:
+      // If parsed date is MORE than 6 months in the past, assume it's next year's game
       const now = new Date();
-      if (dateObj < now && new Date().getMonth() >= 9) {
-        // If we're in Oct/Nov/Dec and date is in past, assume it's next year
+      const sixMonthsInMs = 6 * 30 * 24 * 60 * 60 * 1000;
+      const timeDiff = now.getTime() - dateObj.getTime();
+
+      if (timeDiff > sixMonthsInMs) {
+        // Date is way in the past (more than 6 months), so assume it's next year
         return new Date(`${cleanDate}, ${currentYear + 1} ${hour24}:${minutes}:00`);
       }
 
