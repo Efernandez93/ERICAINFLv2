@@ -84,19 +84,39 @@ const ScheduleBoard: React.FC<ScheduleBoardProps> = ({ onSelectGame, selectedGam
   // Get game datetime in UTC for countdown calculations
   const getGameDateTime = (gameDate: string, gameTime: string): Date => {
     try {
+      // Parse time (e.g., "1:00 PM ET" or "1:00 PM")
       const timeStr = gameTime.replace(' ET', '').trim();
       const [time, period] = timeStr.split(' ');
       const [hours, minutes] = time.split(':');
 
-      // Convert ET to UTC (ET is UTC-5 or UTC-4 during DST, we'll use UTC-5)
+      // Convert to 24-hour format
       let hour24 = parseInt(hours);
       if (period === 'PM' && hour24 !== 12) hour24 += 12;
       if (period === 'AM' && hour24 === 12) hour24 = 0;
 
-      // Parse date and create date object in ET
-      const dateObj = new Date(`${gameDate} ${hour24}:${minutes}:00`);
+      // Parse date format: "Sunday, Nov 26" -> "Nov 26"
+      // Remove the day name and get just "Nov 26"
+      const cleanDate = gameDate.includes(',')
+        ? gameDate.split(', ').pop() || gameDate
+        : gameDate;
+
+      // Add current year to make it parseable
+      const currentYear = new Date().getFullYear();
+      const dateStr = `${cleanDate}, ${currentYear}`;
+
+      // Create date object
+      const dateObj = new Date(`${dateStr} ${hour24}:${minutes}:00`);
+
+      // If the parsed date is in the future but far away, and current date suggests it might be next season, use next year
+      const now = new Date();
+      if (dateObj < now && new Date().getMonth() >= 9) {
+        // If we're in Oct/Nov/Dec and date is in past, assume it's next year
+        return new Date(`${cleanDate}, ${currentYear + 1} ${hour24}:${minutes}:00`);
+      }
+
       return dateObj;
     } catch (e) {
+      console.warn('[SCHEDULE] Failed to parse game date/time:', { gameDate, gameTime, error: e });
       return new Date();
     }
   };
