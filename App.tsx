@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import ScheduleBoard from './components/ScheduleBoard';
 import LegCard from './components/LegCard';
@@ -8,7 +7,7 @@ import ParlaySidebar from './components/ParlaySidebar';
 import { analyzeMatchup } from './services/gemini';
 import { StorageService, CachedMatchup } from './services/storage';
 import { AnalysisResult, GroundingSource, ParlayLeg, Game } from './types';
-import { Shield, Activity, AlertCircle, Database, HardDrive, CloudOff } from 'lucide-react';
+import { Shield, Activity, AlertCircle, Database, HardDrive, Cloud, CloudOff } from 'lucide-react';
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -21,10 +20,16 @@ const App: React.FC = () => {
   const [pinnedLegs, setPinnedLegs] = useState<ParlayLeg[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
+  const [isCloudSync, setIsCloudSync] = useState(false);
 
   // Load list of cached games on mount
   useEffect(() => {
-    setCachedGameIds(StorageService.getCachedGameIds());
+    const loadCacheIndex = async () => {
+        const ids = await StorageService.getCachedGameIds();
+        setCachedGameIds(ids);
+        setIsCloudSync(StorageService.isCloudActive());
+    };
+    loadCacheIndex();
   }, []);
 
   const handleSelectGame = async (game: Game) => {
@@ -35,38 +40,40 @@ const App: React.FC = () => {
     setSources([]);
     setRawText("");
 
-    // 1. Check Cache First
-    const cachedData = StorageService.getMatchup(game.id);
-    if (cachedData) {
-        console.log("Loading from cache...");
-        setResult(cachedData.data);
-        setSources(cachedData.sources);
-        setRawText(cachedData.rawText);
-        setLoading(false);
-        return;
-    }
-
-    // 2. Fetch from API if not cached
     try {
-      const response = await analyzeMatchup(game.homeTeam, game.awayTeam);
-      
-      // Save result to state
-      setResult(response.data);
-      setSources(response.sources);
-      setRawText(response.rawText);
-      
-      // Save to Cache via Service
-      const cachePayload: CachedMatchup = {
-          data: response.data,
-          sources: response.sources,
-          rawText: response.rawText
-      };
-      StorageService.saveMatchup(game.id, cachePayload);
-      
-      // Update local state for the UI indicators
-      setCachedGameIds(prev => [...new Set([...prev, game.id])]);
+        // 1. Check Cache (Async now: Local -> Cloud)
+        const cachedData = await StorageService.getMatchup(game.id);
+        
+        if (cachedData) {
+            console.log("Loading from cache...");
+            setResult(cachedData.data);
+            setSources(cachedData.sources);
+            setRawText(cachedData.rawText);
+            setLoading(false);
+            return;
+        }
+
+        // 2. Fetch from API if not cached
+        const response = await analyzeMatchup(game.homeTeam, game.awayTeam);
+        
+        // Save result to state
+        setResult(response.data);
+        setSources(response.sources);
+        setRawText(response.rawText);
+        
+        // Save to Cache via Service (Async)
+        const cachePayload: CachedMatchup = {
+            data: response.data,
+            sources: response.sources,
+            rawText: response.rawText
+        };
+        await StorageService.saveMatchup(game.id, cachePayload);
+        
+        // Update local state for the UI indicators
+        setCachedGameIds(prev => [...new Set([...prev, game.id])]);
 
     } catch (err) {
+      console.error(err);
       setError("Failed to analyze matchup. Please check your connection and try again.");
     } finally {
       setLoading(false);
@@ -261,16 +268,23 @@ const App: React.FC = () => {
             {/* Storage Mode Footer */}
             <footer className="border-t border-slate-900 bg-slate-950 py-3 px-6">
                 <div className="max-w-6xl mx-auto flex items-center justify-between text-[10px] text-slate-600">
-                    <span>ERIC AI v1.0</span>
+                    <span>ERIC AI v1.1</span>
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800">
                             <HardDrive size={10} className="text-indigo-500" />
                             <span className="text-slate-400">Local Cache Active</span>
                         </div>
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800 opacity-50" title="Requires Database">
-                            <CloudOff size={10} className="text-slate-500" />
-                            <span className="text-slate-500">Cloud Sync Inactive</span>
-                        </div>
+                        {isCloudSync ? (
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-950/30 border border-emerald-900">
+                                <Cloud size={10} className="text-emerald-500" />
+                                <span className="text-emerald-400">Cloud Sync Active</span>
+                            </div>
+                        ) : (
+                             <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800 opacity-50" title="Configure Firebase in storage.ts">
+                                <CloudOff size={10} className="text-slate-500" />
+                                <span className="text-slate-500">Cloud Sync Inactive</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </footer>
