@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import ScheduleBoard from './components/ScheduleBoard';
 import LegCard from './components/LegCard';
@@ -8,7 +7,7 @@ import ParlaySidebar from './components/ParlaySidebar';
 import { getKeyPlayersAndStats, getDeepAnalysis } from './services/gemini';
 import { StorageService } from './services/storage';
 import { AnalysisResult, GroundingSource, ParlayLeg, Game, TeamRoster } from './types';
-import { Shield, Activity, AlertCircle, Database, HardDrive, Terminal } from 'lucide-react';
+import { Shield, Activity, AlertCircle, Database, HardDrive, Terminal, Cloud, CloudOff } from 'lucide-react';
 
 const App: React.FC = () => {
   const [loadingStage, setLoadingStage] = useState<'idle' | 'rosters' | 'analysis'>('idle');
@@ -32,6 +31,7 @@ const App: React.FC = () => {
   });
 
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
+  const [isCloudActive, setIsCloudActive] = useState(false);
   const FALLBACK_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png";
 
   const streamEndRef = useRef<HTMLDivElement>(null);
@@ -48,6 +48,7 @@ const App: React.FC = () => {
     const loadCacheIndex = async () => {
         const ids = await StorageService.getCachedGameIds();
         setCachedGameIds(ids);
+        setIsCloudActive(StorageService.isCloudActive());
     };
     loadCacheIndex();
 
@@ -84,6 +85,8 @@ const App: React.FC = () => {
             setSources(cachedData.sources);
             setRawText(cachedData.rawText);
             setLoadingStage('idle');
+            // Update cloud status in case it changed during fetch
+            setIsCloudActive(StorageService.isCloudActive());
             return;
         }
 
@@ -126,6 +129,8 @@ const App: React.FC = () => {
                 rawText: analysisResponse.rawText
             });
             setCachedGameIds(prev => [...new Set([...prev, game.id])]);
+            // Update cloud status in case save triggered circuit breaker
+            setIsCloudActive(StorageService.isCloudActive());
         }
 
     } catch (err) {
@@ -399,10 +404,21 @@ const App: React.FC = () => {
             <footer className="border-t border-slate-900 bg-slate-950 py-3 px-6">
                 <div className="max-w-6xl mx-auto flex items-center justify-between text-[10px] text-slate-600">
                     <span>ERIC AI v1.3</span>
-                    <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800">
+                    <div className="flex items-center gap-4">
+                        {isCloudActive ? (
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-emerald-500/30 text-emerald-500">
+                                <Cloud size={10} />
+                                <span>Cloud Connected</span>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-400">
+                                <CloudOff size={10} />
+                                <span>Local Storage Mode</span>
+                            </div>
+                        )}
+                        <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800">
                             <HardDrive size={10} className="text-indigo-500" />
-                            <span className="text-slate-400">Local Storage Active</span>
+                            <span className="text-slate-400">Cache Active</span>
                         </div>
                     </div>
                 </div>

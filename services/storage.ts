@@ -1,18 +1,21 @@
 import { AnalysisResult, GroundingSource } from '../types';
+import { db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 /**
- * STORAGE SERVICE (LOCAL ONLY)
+ * STORAGE SERVICE (HYBRID)
  * 
- * Migrated from Firebase to LocalStorage to resolve connection/permission errors.
- * Vercel Blob requires a server-side token exchange which is not available
- * in this client-side Vite application. 
- * 
- * This service implements a robust LocalStorage pattern with LRU (Least Recently Used)
- * eviction if the quota is exceeded.
+ * 1. Tries to use Firebase Firestore first.
+ * 2. If Firebase fails (network, config missing, permission), falls back to LocalStorage.
+ * 3. Handles quota limits for LocalStorage.
+ * 4. Circuit Breaker: If cloud fails hard (e.g. DB not created), it disables cloud for the session.
  */
 
 const CACHE_PREFIX = 'eric_ai_cache_v1_';
 const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24; // 24 Hours
+
+// Circuit breaker flag to prevent spamming errors if DB is down/missing
+let isCloudDisabled = false;
 
 export interface CachedMatchup {
   data: AnalysisResult | null;
@@ -26,13 +29,12 @@ interface CacheItem {
 }
 
 export const StorageService = {
-  
-  // Always return true for local mode
-  isCloudActive: () => false,
+
+  // Returns true if Firebase is configured AND hasn't failed yet
+  isCloudActive: () => !!db && !isCloudDisabled,
 
   /**
-   * Saves analysis result to LocalStorage.
-   * Handles quota limits by removing oldest entries.
+   * Saves analysis result to Storage (Cloud -> Fallback Local).
    */
   saveMatchup: async (gameId: string, data: CachedMatchup): Promise<void> => {
     const item: CacheItem = {
@@ -40,6 +42,24 @@ export const StorageService = {
       payload: data
     };
 
+    // 1. Try Firebase
+    if (db && !isCloudDisabled) {
+        try {
+            const docRef = doc(db, "matchups", gameId);
+            await setDoc(docRef, item);
+            console.log(`[STORAGE] Saved ${gameId} to Firestore`);
+            return; // Success, exit
+        } catch (e: any) {
+            console.warn(`[STORAGE] Firestore save failed: ${e.code || e.message}`);
+            // If the database doesn't exist or permissions are wrong, stop trying for this session
+            if (e.code === 'not-found' || e.code === 'permission-denied' || e.code === 'unavailable') {
+                console.warn("[STORAGE] Disabling Cloud Storage for this session. Please check Firebase Console setup.");
+                isCloudDisabled = true;
+            }
+        }
+    }
+
+    // 2. Fallback to LocalStorage
     const key = `${CACHE_PREFIX}${gameId}`;
     const value = JSON.stringify(item);
 
@@ -48,10 +68,8 @@ export const StorageService = {
       console.log(`[STORAGE] Saved ${gameId} to LocalStorage`);
     } catch (e: any) {
       if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-        console.warn("[STORAGE] Quota exceeded. Cleaning up old cache...");
         StorageService.pruneCache();
         try {
-            // Try one more time after pruning
             localStorage.setItem(key, value);
         } catch (retryError) {
             console.error("[STORAGE] Failed to save even after pruning", retryError);
@@ -61,33 +79,53 @@ export const StorageService = {
   },
 
   /**
-   * Retrieves analysis from LocalStorage.
+   * Retrieves analysis from Storage (Cloud -> Fallback Local).
    */
   getMatchup: async (gameId: string): Promise<CachedMatchup | null> => {
-    const localItemStr = localStorage.getItem(`${CACHE_PREFIX}${gameId}`);
     
+    // 1. Try Firebase
+    if (db && !isCloudDisabled) {
+        try {
+            const docRef = doc(db, "matchups", gameId);
+            const docSnap = await getDoc(docRef);
+            
+            if (docSnap.exists()) {
+                const item = docSnap.data() as CacheItem;
+                // Check Expiry (Optional for cloud, but good practice)
+                if (Date.now() - item.timestamp < CACHE_EXPIRY_MS) {
+                    console.log(`[STORAGE] Hit Firestore Cache for ${gameId}`);
+                    return item.payload;
+                }
+            }
+        } catch (e: any) {
+            console.warn(`[STORAGE] Firestore read failed: ${e.code || e.message}`);
+            if (e.code === 'not-found' || e.code === 'permission-denied' || e.code === 'unavailable') {
+                isCloudDisabled = true;
+            }
+        }
+    }
+
+    // 2. Fallback to LocalStorage
+    const localItemStr = localStorage.getItem(`${CACHE_PREFIX}${gameId}`);
     if (!localItemStr) return null;
 
     try {
       const item: CacheItem = JSON.parse(localItemStr);
-      
-      // Check Expiry
       if (Date.now() - item.timestamp < CACHE_EXPIRY_MS) {
         console.log(`[STORAGE] Hit Local Cache for ${gameId}`);
         return item.payload;
       } else {
-        console.log(`[STORAGE] Expired Cache for ${gameId}`);
         localStorage.removeItem(`${CACHE_PREFIX}${gameId}`);
         return null;
       }
     } catch (e) { 
-        console.error("Cache Parse Error", e);
         return null; 
     }
   },
 
   /**
-   * Returns a list of all game IDs currently in the cache.
+   * Returns a list of cached game IDs (Local Only for speed, or could expand to query firestore)
+   * Currently keeps this local for immediate UI feedback.
    */
   getCachedGameIds: async (): Promise<string[]> => {
     const ids: string[] = [];
@@ -100,13 +138,8 @@ export const StorageService = {
     return ids;
   },
 
-  /**
-   * Helper to remove oldest items when storage is full
-   */
   pruneCache: () => {
     const items: {key: string, timestamp: number}[] = [];
-    
-    // 1. Gather all cache items
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.startsWith(CACHE_PREFIX)) {
@@ -114,35 +147,11 @@ export const StorageService = {
                 const item: CacheItem = JSON.parse(localStorage.getItem(key) || '{}');
                 items.push({ key, timestamp: item.timestamp || 0 });
             } catch (e) {
-                // Corrupt item, mark for deletion
                 items.push({ key, timestamp: 0 }); 
             }
         }
     }
-
-    // 2. Sort by oldest first
     items.sort((a, b) => a.timestamp - b.timestamp);
-
-    // 3. Remove the oldest 5 items
-    const itemsToRemove = items.slice(0, 5);
-    itemsToRemove.forEach(item => {
-        localStorage.removeItem(item.key);
-        console.log(`[STORAGE] Pruned ${item.key}`);
-    });
-  },
-
-  /**
-   * Clear local cache only (Admin utility)
-   */
-  clearLocalCache: (): void => {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(CACHE_PREFIX)) {
-            keysToRemove.push(key);
-        }
-    }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-    console.log("[STORAGE] Cache Cleared");
+    items.slice(0, 5).forEach(item => localStorage.removeItem(item.key));
   }
 };
