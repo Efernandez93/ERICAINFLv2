@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import ScheduleBoard from './components/ScheduleBoard';
 import LegCard from './components/LegCard';
@@ -5,11 +6,9 @@ import SourceList from './components/SourceList';
 import RosterList from './components/RosterList';
 import ParlaySidebar from './components/ParlaySidebar';
 import { analyzeMatchup } from './services/gemini';
+import { StorageService, CachedMatchup } from './services/storage';
 import { AnalysisResult, GroundingSource, ParlayLeg, Game } from './types';
-import { Shield, Activity, AlertCircle, Database } from 'lucide-react';
-
-const CACHE_PREFIX = 'parlay_pro_cache_v1_';
-const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24; // 24 Hours
+import { Shield, Activity, AlertCircle, Database, HardDrive, CloudOff } from 'lucide-react';
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -25,42 +24,8 @@ const App: React.FC = () => {
 
   // Load list of cached games on mount
   useEffect(() => {
-    const keys = Object.keys(localStorage);
-    const cachedIds = keys
-        .filter(k => k.startsWith(CACHE_PREFIX))
-        .map(k => k.replace(CACHE_PREFIX, ''));
-    setCachedGameIds(cachedIds);
+    setCachedGameIds(StorageService.getCachedGameIds());
   }, []);
-
-  const saveToCache = (gameId: string, data: any) => {
-    const cacheItem = {
-        timestamp: Date.now(),
-        payload: data
-    };
-    try {
-        localStorage.setItem(`${CACHE_PREFIX}${gameId}`, JSON.stringify(cacheItem));
-        setCachedGameIds(prev => [...new Set([...prev, gameId])]);
-    } catch (e) {
-        console.warn("Cache limit reached or storage error");
-    }
-  };
-
-  const getFromCache = (gameId: string) => {
-    const itemStr = localStorage.getItem(`${CACHE_PREFIX}${gameId}`);
-    if (!itemStr) return null;
-
-    try {
-        const item = JSON.parse(itemStr);
-        // Check expiry
-        if (Date.now() - item.timestamp > CACHE_EXPIRY_MS) {
-            localStorage.removeItem(`${CACHE_PREFIX}${gameId}`);
-            return null;
-        }
-        return item.payload;
-    } catch (e) {
-        return null;
-    }
-  };
 
   const handleSelectGame = async (game: Game) => {
     setSelectedGame(game);
@@ -71,7 +36,7 @@ const App: React.FC = () => {
     setRawText("");
 
     // 1. Check Cache First
-    const cachedData = getFromCache(game.id);
+    const cachedData = StorageService.getMatchup(game.id);
     if (cachedData) {
         console.log("Loading from cache...");
         setResult(cachedData.data);
@@ -90,8 +55,16 @@ const App: React.FC = () => {
       setSources(response.sources);
       setRawText(response.rawText);
       
-      // Save to Cache
-      saveToCache(game.id, response);
+      // Save to Cache via Service
+      const cachePayload: CachedMatchup = {
+          data: response.data,
+          sources: response.sources,
+          rawText: response.rawText
+      };
+      StorageService.saveMatchup(game.id, cachePayload);
+      
+      // Update local state for the UI indicators
+      setCachedGameIds(prev => [...new Set([...prev, game.id])]);
 
     } catch (err) {
       setError("Failed to analyze matchup. Please check your connection and try again.");
@@ -149,7 +122,7 @@ const App: React.FC = () => {
                 </div>
             </header>
 
-            <main className="max-w-6xl mx-auto px-6 py-8 w-full">
+            <main className="max-w-6xl mx-auto px-6 py-8 w-full flex-1">
                 
                 <ScheduleBoard 
                     onSelectGame={handleSelectGame} 
@@ -284,6 +257,23 @@ const App: React.FC = () => {
                 </div>
                 )}
             </main>
+
+            {/* Storage Mode Footer */}
+            <footer className="border-t border-slate-900 bg-slate-950 py-3 px-6">
+                <div className="max-w-6xl mx-auto flex items-center justify-between text-[10px] text-slate-600">
+                    <span>ERIC AI v1.0</span>
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800">
+                            <HardDrive size={10} className="text-indigo-500" />
+                            <span className="text-slate-400">Local Cache Active</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-800 opacity-50" title="Requires Database">
+                            <CloudOff size={10} className="text-slate-500" />
+                            <span className="text-slate-500">Cloud Sync Inactive</span>
+                        </div>
+                    </div>
+                </div>
+            </footer>
         </div>
     </div>
   );

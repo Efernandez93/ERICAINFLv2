@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { AnalysisResult, GroundingSource, ScheduleResponse } from "../types";
 
@@ -125,9 +126,9 @@ export const analyzeMatchup = async (
     1. Search for "[${teamA} vs ${teamB}] injury report" and "depth chart" to confirm active starters.
     2. Search for "NFL defense rankings vs position 2024" to get accurate defensive stats.
     3. FOR EACH KEY STARTER (QB, Top RB, Top WR):
-       - Search explicitly for: "[Player Name] game log 2024" to fill the "last5Games" table.
-       - Extract the MOST RECENT 5 games played.
-       - If a player was injured/out, skip those games and find games they played.
+       - Search explicitly for: "[Player Name] game log 2024 ESPN" or "[Player Name] last 5 games stats".
+       - Extract the MOST RECENT 5 games played relative to ${today}.
+       - If a player was injured/out, skip those games and find games they actually played in.
 
     Output Requirements:
     - Format the output strictly as a JSON object wrapped in a markdown code block.
