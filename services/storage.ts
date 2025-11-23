@@ -1,15 +1,14 @@
 
 import { AnalysisResult, GroundingSource } from '../types';
-import { db } from './firebase';
-import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
+import { supabase } from './supabase';
 
 /**
  * STORAGE SERVICE (HYBRID)
- * 
- * 1. Tries to use Firebase Firestore first.
- * 2. If Firebase fails (network, config missing, permission), falls back to LocalStorage.
+ *
+ * 1. Tries to use Supabase PostgreSQL first.
+ * 2. If Supabase fails (network, config missing, permission), falls back to LocalStorage.
  * 3. Handles quota limits for LocalStorage.
- * 4. Circuit Breaker: If cloud fails hard (e.g. DB not created), it disables cloud for the session.
+ * 4. Circuit Breaker: If cloud fails hard (e.g. DB not accessible), it disables cloud for the session.
  */
 
 const CACHE_PREFIX = 'eric_ai_cache_v1_';
@@ -24,6 +23,12 @@ export interface CachedMatchup {
   rawText: string;
 }
 
+export interface ScheduleCache {
+  week: string;
+  games: any[];
+  timestamp: number;
+}
+
 interface CacheItem {
   timestamp: number;
   payload: CachedMatchup;
@@ -31,32 +36,40 @@ interface CacheItem {
 
 export const StorageService = {
 
-  // Returns true if Firebase is configured AND hasn't failed yet
-  isCloudActive: () => !!db && !isCloudDisabled,
+  // Returns true if Supabase is configured AND hasn't failed yet
+  isCloudActive: () => !!supabase && !isCloudDisabled,
 
   /**
    * ACTUALLY tests the connection.
-   * Returns true if we can reach Firestore, false otherwise.
+   * Returns true if we can reach Supabase, false otherwise.
    */
   verifyConnection: async (): Promise<boolean> => {
-    if (!db) {
-        isCloudDisabled = true;
-        return false;
+    if (!supabase) {
+      isCloudDisabled = true;
+      return false;
     }
 
     try {
-        // Try to read a dummy document.
-        // Even if it doesn't exist, if we don't get an error, we are CONNECTED.
-        const docRef = doc(db, "system", "ping");
-        await getDoc(docRef);
-        console.log("[STORAGE] Connection Verified: ONLINE");
-        isCloudDisabled = false;
-        return true;
-    } catch (e: any) {
-        console.warn(`[STORAGE] Connection Verification Failed: ${e.code || e.message}`);
-        // Common codes: 'permission-denied', 'unavailable', 'not-found' (if project missing)
+      // Try to read from the matchups table (even if empty)
+      // This tests connectivity without requiring a specific document
+      const { error } = await supabase
+        .from('matchups')
+        .select('id')
+        .limit(1);
+
+      if (error) {
+        console.warn(`[STORAGE] Connection Verification Failed: ${error.message}`);
         isCloudDisabled = true;
         return false;
+      }
+
+      console.log('[STORAGE] Connection Verified: ONLINE');
+      isCloudDisabled = false;
+      return true;
+    } catch (e: any) {
+      console.warn(`[STORAGE] Connection Verification Failed: ${e.message}`);
+      isCloudDisabled = true;
+      return false;
     }
   },
 
@@ -69,20 +82,33 @@ export const StorageService = {
       payload: data
     };
 
-    // 1. Try Firebase
-    if (db && !isCloudDisabled) {
-        try {
-            const docRef = doc(db, "matchups", gameId);
-            await setDoc(docRef, item);
-            console.log(`[STORAGE] Saved ${gameId} to Firestore`);
-            return; // Success, exit
-        } catch (e: any) {
-            console.warn(`[STORAGE] Firestore save failed: ${e.code || e.message}`);
-            // If the database doesn't exist or permissions are wrong, stop trying for this session
-            if (e.code === 'not-found' || e.code === 'permission-denied' || e.code === 'unavailable') {
-                isCloudDisabled = true;
-            }
+    // 1. Try Supabase
+    if (supabase && !isCloudDisabled) {
+      try {
+        const { error } = await supabase
+          .from('matchups')
+          .upsert({
+            id: gameId,
+            timestamp: item.timestamp,
+            data: item.payload.data,
+            sources: item.payload.sources,
+            raw_text: item.payload.rawText
+          });
+
+        if (error) {
+          console.warn(`[STORAGE] Supabase save failed: ${error.message}`);
+          // If permissions or connection issues, disable cloud for this session
+          if (error.message.includes('permission') || error.message.includes('connection')) {
+            isCloudDisabled = true;
+          }
+        } else {
+          console.log(`[STORAGE] Saved ${gameId} to Supabase`);
+          return; // Success, exit
         }
+      } catch (e: any) {
+        console.warn(`[STORAGE] Supabase save failed: ${e.message}`);
+        isCloudDisabled = true;
+      }
     }
 
     // 2. Fallback to LocalStorage
@@ -96,9 +122,9 @@ export const StorageService = {
       if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
         StorageService.pruneCache();
         try {
-            localStorage.setItem(key, value);
+          localStorage.setItem(key, value);
         } catch (retryError) {
-            console.error("[STORAGE] Failed to save even after pruning", retryError);
+          console.error('[STORAGE] Failed to save even after pruning', retryError);
         }
       }
     }
@@ -108,27 +134,39 @@ export const StorageService = {
    * Retrieves analysis from Storage (Cloud -> Fallback Local).
    */
   getMatchup: async (gameId: string): Promise<CachedMatchup | null> => {
-    
-    // 1. Try Firebase
-    if (db && !isCloudDisabled) {
-        try {
-            const docRef = doc(db, "matchups", gameId);
-            const docSnap = await getDoc(docRef);
-            
-            if (docSnap.exists()) {
-                const item = docSnap.data() as CacheItem;
-                // Check Expiry (Optional for cloud, but good practice)
-                if (Date.now() - item.timestamp < CACHE_EXPIRY_MS) {
-                    console.log(`[STORAGE] Hit Firestore Cache for ${gameId}`);
-                    return item.payload;
-                }
+
+    // 1. Try Supabase
+    if (supabase && !isCloudDisabled) {
+      try {
+        const { data, error } = await supabase
+          .from('matchups')
+          .select('*')
+          .eq('id', gameId)
+          .single();
+
+        if (error) {
+          // 'PGRST116' is "not found" error - not a critical failure
+          if (error.code !== 'PGRST116') {
+            console.warn(`[STORAGE] Supabase read failed: ${error.message}`);
+            if (error.message.includes('permission') || error.message.includes('connection')) {
+              isCloudDisabled = true;
             }
-        } catch (e: any) {
-            console.warn(`[STORAGE] Firestore read failed: ${e.code || e.message}`);
-            if (e.code === 'not-found' || e.code === 'permission-denied' || e.code === 'unavailable') {
-                isCloudDisabled = true;
-            }
+          }
+        } else if (data) {
+          // Check expiry
+          if (Date.now() - data.timestamp < CACHE_EXPIRY_MS) {
+            console.log(`[STORAGE] Hit Supabase Cache for ${gameId}`);
+            return {
+              data: data.data,
+              sources: data.sources || [],
+              rawText: data.raw_text || ''
+            };
+          }
         }
+      } catch (e: any) {
+        console.warn(`[STORAGE] Supabase read failed: ${e.message}`);
+        isCloudDisabled = true;
+      }
     }
 
     // 2. Fallback to LocalStorage
@@ -144,59 +182,118 @@ export const StorageService = {
         localStorage.removeItem(`${CACHE_PREFIX}${gameId}`);
         return null;
       }
-    } catch (e) { 
-        return null; 
+    } catch (e) {
+      return null;
     }
   },
 
   /**
    * Returns a list of cached game IDs from BOTH LocalStorage and Cloud.
-   * This ensures devices sync their "green" status.
+   * This ensures devices sync their "ready" status.
    */
   getCachedGameIds: async (): Promise<string[]> => {
     const ids = new Set<string>();
 
     // 1. LocalStorage (Always check this first, it's instant)
     for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(CACHE_PREFIX)) {
-            ids.add(key.replace(CACHE_PREFIX, ''));
-        }
+      const key = localStorage.key(i);
+      if (key && key.startsWith(CACHE_PREFIX)) {
+        ids.add(key.replace(CACHE_PREFIX, ''));
+      }
     }
 
-    // 2. Firestore (If connected, fetch list of all analyzed games)
-    if (db && !isCloudDisabled) {
-        try {
-            const querySnapshot = await getDocs(collection(db, "matchups"));
-            querySnapshot.forEach((doc) => {
-                ids.add(doc.id);
-            });
-            console.log(`[STORAGE] Synced ${querySnapshot.size} games from Cloud`);
-        } catch (e: any) {
-            console.warn("[STORAGE] Failed to fetch cloud IDs:", e);
-             if (e.code === 'not-found' || e.code === 'permission-denied' || e.code === 'unavailable') {
-                isCloudDisabled = true;
-            }
+    // 2. Supabase (If connected, fetch list of all analyzed games)
+    if (supabase && !isCloudDisabled) {
+      try {
+        const { data, error } = await supabase
+          .from('matchups')
+          .select('id');
+
+        if (error) {
+          console.warn('[STORAGE] Failed to fetch cloud IDs:', error.message);
+          if (error.message.includes('permission') || error.message.includes('connection')) {
+            isCloudDisabled = true;
+          }
+        } else if (data) {
+          data.forEach((row: { id: string }) => {
+            ids.add(row.id);
+          });
+          console.log(`[STORAGE] Synced ${data.length} games from Supabase`);
         }
+      } catch (e: any) {
+        console.warn('[STORAGE] Failed to fetch cloud IDs:', e.message);
+        isCloudDisabled = true;
+      }
     }
 
     return Array.from(ids);
   },
 
   pruneCache: () => {
-    const items: {key: string, timestamp: number}[] = [];
+    const items: { key: string; timestamp: number }[] = [];
     for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(CACHE_PREFIX)) {
-            try {
-                const item: CacheItem = JSON.parse(localStorage.getItem(key) || '{}');
-                items.push({ key, timestamp: item.timestamp || 0 });
-            } catch (e) {
-                items.push({ key, timestamp: 0 }); 
-            }
+      const key = localStorage.key(i);
+      if (key && key.startsWith(CACHE_PREFIX)) {
+        try {
+          const item: CacheItem = JSON.parse(localStorage.getItem(key) || '{}');
+          items.push({ key, timestamp: item.timestamp || 0 });
+        } catch (e) {
+          items.push({ key, timestamp: 0 });
         }
+      }
     }
     items.sort((a, b) => a.timestamp - b.timestamp);
     items.slice(0, 5).forEach(item => localStorage.removeItem(item.key));
+  },
+
+  /**
+   * Saves NFL schedule to LocalStorage cache
+   * Schedules are cached for 6 hours (shorter than matchups since they update weekly)
+   */
+  saveSchedule: async (week: string, games: any[]): Promise<void> => {
+    const SCHEDULE_CACHE_PREFIX = 'eric_ai_schedule_v1_';
+    const SCHEDULE_EXPIRY_MS = 1000 * 60 * 60 * 6; // 6 hours
+
+    const cacheKey = `${SCHEDULE_CACHE_PREFIX}${week}`;
+    const cache: ScheduleCache = {
+      week,
+      games,
+      timestamp: Date.now()
+    };
+
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(cache));
+      console.log(`[STORAGE] Saved schedule for ${week} to cache`);
+    } catch (e: any) {
+      console.warn(`[STORAGE] Failed to cache schedule: ${e.message}`);
+    }
+  },
+
+  /**
+   * Retrieves cached NFL schedule
+   * Returns null if not found or expired (6 hour TTL)
+   */
+  getSchedule: async (week: string): Promise<any[] | null> => {
+    const SCHEDULE_CACHE_PREFIX = 'eric_ai_schedule_v1_';
+    const SCHEDULE_EXPIRY_MS = 1000 * 60 * 60 * 6; // 6 hours
+
+    const cacheKey = `${SCHEDULE_CACHE_PREFIX}${week}`;
+    const cached = localStorage.getItem(cacheKey);
+
+    if (!cached) return null;
+
+    try {
+      const cache: ScheduleCache = JSON.parse(cached);
+      if (Date.now() - cache.timestamp < SCHEDULE_EXPIRY_MS) {
+        console.log(`[STORAGE] Hit schedule cache for ${week}`);
+        return cache.games;
+      } else {
+        localStorage.removeItem(cacheKey);
+        return null;
+      }
+    } catch (e) {
+      console.warn(`[STORAGE] Failed to parse schedule cache: ${e}`);
+      return null;
+    }
   }
 };

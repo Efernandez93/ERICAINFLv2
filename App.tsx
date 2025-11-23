@@ -33,7 +33,8 @@ const App: React.FC = () => {
 
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
   const [cloudStatus, setCloudStatus] = useState<'checking' | 'connected' | 'offline'>('checking');
-  
+  const [saveNotification, setSaveNotification] = useState<{ show: boolean; gameId?: string }>({ show: false });
+
   const FALLBACK_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png";
 
   const streamEndRef = useRef<HTMLDivElement>(null);
@@ -139,6 +140,10 @@ const App: React.FC = () => {
                 rawText: analysisResponse.rawText
             });
             setCachedGameIds(prev => [...new Set([...prev, game.id])]);
+
+            // Show save confirmation notification
+            setSaveNotification({ show: true, gameId: game.id });
+            setTimeout(() => setSaveNotification({ show: false }), 3000);
         }
 
     } catch (err) {
@@ -205,11 +210,22 @@ const App: React.FC = () => {
             </header>
 
             <main className="max-w-6xl mx-auto px-6 py-8 w-full flex-1">
-                
-                <ScheduleBoard 
-                    onSelectGame={handleSelectGame} 
+
+                {/* Save Confirmation Toast */}
+                {saveNotification.show && (
+                    <div className="fixed bottom-6 right-6 bg-emerald-500/20 border border-emerald-500/50 rounded-lg p-4 flex items-center gap-3 animate-fade-in z-50 max-w-sm">
+                        <Database size={18} className="text-emerald-400 flex-shrink-0" />
+                        <div>
+                            <p className="text-sm font-bold text-emerald-300">Analysis saved to Supabase</p>
+                            <p className="text-xs text-emerald-200/70">Data cached and available offline</p>
+                        </div>
+                    </div>
+                )}
+
+                <ScheduleBoard
+                    onSelectGame={handleSelectGame}
                     selectedGameId={selectedGame?.id}
-                    cachedGameIds={cachedGameIds} 
+                    cachedGameIds={cachedGameIds}
                 />
 
                 {error && (

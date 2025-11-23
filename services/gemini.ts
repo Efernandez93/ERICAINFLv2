@@ -1,6 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { AnalysisResult, GroundingSource, ScheduleResponse, TeamRoster } from "../types";
+import { StorageService } from "./storage";
 
 // Helper to safely get the API Key from various environments without crashing
 const getSafeApiKey = (): string | undefined => {
@@ -30,36 +31,48 @@ console.log(`[DEBUG] API Key status: ${currentKey ? 'Present' : 'Missing'}`);
 
 export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleResponse | null; rawText: string; error?: string }> => {
   const apiKey = getSafeApiKey();
-  
+
   if (!apiKey) {
-      return { 
-          data: null, 
-          rawText: "", 
-          error: "API Key is missing. Please add VITE_API_KEY or API_KEY to your Vercel Environment Variables." 
+      return {
+          data: null,
+          rawText: "",
+          error: "API Key is missing. Please add VITE_API_KEY or API_KEY to your Vercel Environment Variables."
       };
+  }
+
+  // Determine week key for caching
+  const weekKey = week || "current";
+
+  // 1. Check cache first (instant load)
+  const cachedGames = await StorageService.getSchedule(weekKey);
+  if (cachedGames && cachedGames.length > 0) {
+    return {
+      data: { week: weekKey, games: cachedGames },
+      rawText: "[Schedule loaded from cache]"
+    };
   }
 
   const ai = new GoogleGenAI({ apiKey });
   const today = new Date().toDateString();
   const weekQuery = week ? `NFL ${week}` : `the CURRENT or UPCOMING week's NFL schedule relative to today: ${today}`;
-  
+
   const prompt = `
     You are ERIC (Expert Real-time Intelligent Capper), an elite NFL scheduler assistant.
     Find the schedule for ${weekQuery}.
-    
+
     Task:
     1. Use Google Search to find the schedule for the requested week.
     2. Return a JSON object containing the week number/label and the list of games.
     3. CRITICAL: Include the 2 or 3 letter Team Abbreviation (e.g., KC, SF, CHI, LV, NE, TB) for every team. This is used for generating logos.
-    
+
     JSON Structure:
     {
       "week": "Week 12",
       "games": [
-        { 
+        {
             "homeTeam": "Chiefs", "homeTeamAbbr": "KC",
             "awayTeam": "Raiders", "awayTeamAbbr": "LV",
-            "time": "1:00 PM ET", "date": "Sunday, Nov 26", "id": "kc-lv-2023" 
+            "time": "1:00 PM ET", "date": "Sunday, Nov 26", "id": "kc-lv-2023"
         }
       ]
     }
@@ -81,6 +94,10 @@ export const getNFLSchedule = async (week?: string): Promise<{ data: ScheduleRes
     if (jsonMatch && jsonMatch[1]) {
       try {
         parsedData = JSON.parse(jsonMatch[1]);
+        // Cache the schedule for future loads
+        if (parsedData && parsedData.games) {
+          await StorageService.saveSchedule(weekKey, parsedData.games);
+        }
       } catch (e) {
         console.error("Failed to parse schedule JSON", e);
       }
