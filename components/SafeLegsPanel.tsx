@@ -29,9 +29,27 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
 
   // Find defense rank for a position
   const getDefenseRankForPosition = (position: string): string | number | undefined => {
-    const defStat = defenseStats.find(stat =>
-      position.includes(stat.position) || stat.position.includes(position)
-    );
+    if (!defenseStats || defenseStats.length === 0) return undefined;
+
+    const posLower = position.toLowerCase();
+
+    // Direct match or substring match
+    let defStat = defenseStats.find(stat => {
+      const statPosLower = stat.position.toLowerCase();
+      return posLower.includes(statPosLower) || statPosLower.includes(posLower);
+    });
+
+    // If no match found, try to match by common patterns
+    if (!defStat) {
+      if (posLower.includes('rb') || posLower.includes('back')) {
+        defStat = defenseStats.find(s => s.position.toLowerCase().includes('rb') || s.position.toLowerCase().includes('rush'));
+      } else if (posLower.includes('wr') || posLower.includes('receiver')) {
+        defStat = defenseStats.find(s => s.position.toLowerCase().includes('wr') || s.position.toLowerCase().includes('rec'));
+      } else if (posLower.includes('te')) {
+        defStat = defenseStats.find(s => s.position.toLowerCase().includes('te'));
+      }
+    }
+
     return defStat?.rank;
   };
 
@@ -55,8 +73,16 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
       });
     }
 
-    // Filter to only show legs with significant defense advantage (>50%)
-    const filteredLegs = allLegs.filter(leg => leg.defenseAdvantage > 50);
+    // Filter to only show legs with good safety score (>60%)
+    // If defense rankings aren't available, still show high-confidence picks
+    const filteredLegs = allLegs.filter(leg => {
+      // If we have defense advantage data, require it to be >40%
+      if (leg.defenseAdvantage > 0) {
+        return leg.safetyScore > 60 && leg.defenseAdvantage > 40;
+      }
+      // If no defense data, just require high safety score
+      return leg.safetyScore > 60;
+    });
 
     // Sort by combined score descending and limit to 5
     return filteredLegs.sort((a, b) => {
