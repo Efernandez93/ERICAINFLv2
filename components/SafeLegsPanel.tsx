@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Plus, Shield } from 'lucide-react';
-import { TeamRoster, ParlayLeg } from '../types';
+import { ChevronDown, ChevronUp, Plus, Shield, TrendingUp } from 'lucide-react';
+import { TeamRoster, ParlayLeg, DefenseStat } from '../types';
 import { StatParser } from '../services/statParser';
 
 interface SafeLegsPanelProps {
@@ -8,13 +8,15 @@ interface SafeLegsPanelProps {
   awayTeam?: TeamRoster;
   onAddLeg: (leg: ParlayLeg) => void;
   disabled?: boolean;
+  defenseStats?: DefenseStat[];
 }
 
 const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
   homeTeam,
   awayTeam,
   onAddLeg,
-  disabled = false
+  disabled = false,
+  defenseStats = []
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [customLines, setCustomLines] = useState<{ [key: string]: number }>({});
@@ -23,26 +25,40 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
   const getLegKey = (player: string, team: string, statName: string): string =>
     `${team}-${player}-${statName}`;
 
+  // Find defense rank for a position
+  const getDefenseRankForPosition = (position: string): string | number | undefined => {
+    const defStat = defenseStats.find(stat =>
+      position.includes(stat.position) || stat.position.includes(position)
+    );
+    return defStat?.rank;
+  };
+
   // Get all safe leg recommendations
   const getSafeLegs = () => {
     const allLegs: any[] = [];
 
     if (homeTeam) {
       homeTeam.players.forEach(player => {
-        const legs = StatParser.getTopSafeLegs(player, homeTeam.teamName, 3);
+        const defenseRank = getDefenseRankForPosition(player.position);
+        const legs = StatParser.getTopSafeLegs(player, homeTeam.teamName, 3, defenseRank);
         allLegs.push(...legs);
       });
     }
 
     if (awayTeam) {
       awayTeam.players.forEach(player => {
-        const legs = StatParser.getTopSafeLegs(player, awayTeam.teamName, 3);
+        const defenseRank = getDefenseRankForPosition(player.position);
+        const legs = StatParser.getTopSafeLegs(player, awayTeam.teamName, 3, defenseRank);
         allLegs.push(...legs);
       });
     }
 
-    // Sort by safety score descending
-    return allLegs.sort((a, b) => b.safetyScore - a.safetyScore).slice(0, 15);
+    // Sort by safety score + defense advantage descending
+    return allLegs.sort((a, b) => {
+      const scoreA = (a.safetyScore * 0.6) + (a.defenseAdvantage * 0.4);
+      const scoreB = (b.safetyScore * 0.6) + (b.defenseAdvantage * 0.4);
+      return scoreB - scoreA;
+    }).slice(0, 15);
   };
 
   const safeLegs = getSafeLegs();
@@ -59,9 +75,9 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
       propType: leg.statName,
       line: customLine,
       confidence: leg.safetyScore,
-      reasoning: `Safe leg based on ${leg.average.toFixed(1)} avg (${leg.safetyScore}% consistency)`,
+      reasoning: `Safe leg: ${leg.average.toFixed(1)} avg (${leg.safetyScore}% consistent) vs weak defense (${leg.defenseAdvantage}% advantage)`,
       playerAvg: leg.average,
-      defenseAllowedVsPos: '-',
+      defenseAllowedVsPos: leg.defenseAdvantage,
       isSafeLeg: true,
       safetyScore: leg.safetyScore,
       playerMinAvg: leg.min,
@@ -134,10 +150,16 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
                           {leg.team} • {leg.position}
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right space-y-1">
                         <div className="text-xs font-bold text-amber-400">
                           {leg.safetyScore}% Safe
                         </div>
+                        {leg.defenseAdvantage > 0 && (
+                          <div className="flex items-center justify-end gap-1 text-xs font-bold text-emerald-400">
+                            <Shield size={12} />
+                            {leg.defenseAdvantage}% Adv
+                          </div>
+                        )}
                       </div>
                     </div>
 

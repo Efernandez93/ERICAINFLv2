@@ -103,12 +103,14 @@ export const StatParser = {
 
   /**
    * Calculate safe recommendation (conservative line below average)
+   * Rounds to nearest 5-yard increment for betting purposes
    * Typically 15-20% below average to be conservative
    */
   calculateSafeRecommendation: (average: number, conservativePercent: number = 15): number => {
     const reduction = average * (conservativePercent / 100);
     const recommended = average - reduction;
-    return parseFloat(recommended.toFixed(1));
+    // Round to nearest 5-yard increment
+    return Math.round(recommended / 5) * 5;
   },
 
   /**
@@ -129,13 +131,33 @@ export const StatParser = {
   },
 
   /**
+   * Calculate defense advantage score based on opponent's ranking
+   * Lower rank number = stronger defense = lower allowed stats = higher advantage
+   * Returns 0-100 advantage score
+   */
+  calculateDefenseAdvantage: (rank: string | number): number => {
+    let rankNum = typeof rank === 'string' ? parseInt(rank) : rank;
+
+    // If rank is something like "32nd", extract the number
+    if (typeof rank === 'string' && rank.includes('nd')) {
+      rankNum = parseInt(rank.match(/\d+/)?.[0] || '16') || 16;
+    }
+
+    // Rank 1 (best defense) = 100 advantage, Rank 32 (worst defense) = 0 advantage
+    const advantage = Math.max(0, 100 - (rankNum * 3.125));
+    return parseFloat(advantage.toFixed(0));
+  },
+
+  /**
    * Get top N safest legs from a player's stats
-   * Returns legs sorted by safety score
+   * Returns legs sorted by combined safety + defense advantage score
+   * Incorporates defense rankings to weight recommendations
    */
   getTopSafeLegs: (
     player: PlayerStat,
     teamName: string,
-    limit: number = 5
+    limit: number = 5,
+    defenseRank?: string | number
   ): Array<{
     player: string;
     team: string;
@@ -146,9 +168,11 @@ export const StatParser = {
     min: number;
     max: number;
     safetyScore: number;
+    defenseAdvantage: number;
     variance: number;
   }> => {
     const summaries = StatParser.getAllStatSummaries(player.last5Games);
+    const defenseAdvantage = defenseRank ? StatParser.calculateDefenseAdvantage(defenseRank) : 0;
 
     const legs = summaries.map(summary => ({
       player: player.name,
@@ -160,10 +184,18 @@ export const StatParser = {
       min: parseFloat(summary.min.toFixed(1)),
       max: parseFloat(summary.max.toFixed(1)),
       variance: summary.variance,
-      safetyScore: StatParser.calculateSafetyScore(summary.average, summary.variance)
+      safetyScore: StatParser.calculateSafetyScore(summary.average, summary.variance),
+      defenseAdvantage
     }));
 
-    // Sort by safety score descending
-    return legs.sort((a, b) => b.safetyScore - a.safetyScore).slice(0, limit);
+    // Sort by combined score: 60% safety score + 40% defense advantage
+    return legs
+      .map(leg => ({
+        ...leg,
+        combinedScore: (leg.safetyScore * 0.6) + (leg.defenseAdvantage * 0.4)
+      }))
+      .sort((a, b) => b.combinedScore - a.combinedScore)
+      .slice(0, limit)
+      .map(({ combinedScore, ...leg }) => leg);
   }
 };

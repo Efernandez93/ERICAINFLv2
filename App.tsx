@@ -518,6 +518,7 @@ const App: React.FC = () => {
                 awayTeam={rosterData?.teamB}
                 onAddLeg={togglePin}
                 disabled={!rosterData}
+                defenseStats={result?.defenseStats}
             />
         </div>
     </div>
