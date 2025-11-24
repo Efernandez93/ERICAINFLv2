@@ -511,20 +511,14 @@ const App: React.FC = () => {
             </footer>
         </div>
 
-        {/* Right Sidebar (Safe Legs & Parlay Analysis) */}
+        {/* Right Sidebar (Safe Legs Panel) */}
         <div className="hidden lg:flex flex-col h-screen sticky top-0 overflow-hidden z-40 lg:w-96 bg-slate-900 border-l border-slate-800">
-            <div className="grid grid-cols-1 h-full divide-y divide-slate-800 overflow-hidden">
-                {/* Safe Legs Panel (Top Half) */}
-                <SafeLegsPanel
-                    homeTeam={rosterData?.teamA}
-                    awayTeam={rosterData?.teamB}
-                    onAddLeg={togglePin}
-                    disabled={!rosterData}
-                />
-
-                {/* My Parlay Panel (Bottom Half) */}
-                <ParlaySidebar legs={pinnedLegs} onRemoveLeg={removePin} />
-            </div>
+            <SafeLegsPanel
+                homeTeam={rosterData?.teamA}
+                awayTeam={rosterData?.teamB}
+                onAddLeg={togglePin}
+                disabled={!rosterData}
+            />
         </div>
     </div>
   );
