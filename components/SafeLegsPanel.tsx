@@ -53,12 +53,22 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
     return defStat?.rank;
   };
 
+  // Check if player is a starter (not WR3/WR4/RB3/RB4 etc.)
+  const isStarter = (position: string): boolean => {
+    const posLower = position.toLowerCase();
+    // Filter out third and fourth string players (WR3, WR4, RB3, RB4, etc.)
+    return !posLower.match(/\b(wr[3-9]|rb[3-9]|te[3-9]|qb[2-9]|wr\s[3-9]|rb\s[3-9])/i);
+  };
+
   // Get all safe leg recommendations
   const getSafeLegs = () => {
     const allLegs: any[] = [];
 
     if (homeTeam) {
       homeTeam.players.forEach(player => {
+        // Only include starter players
+        if (!isStarter(player.position)) return;
+
         const defenseRank = getDefenseRankForPosition(player.position);
         const legs = StatParser.getTopSafeLegs(player, homeTeam.teamName, 3, defenseRank);
         allLegs.push(...legs);
@@ -67,6 +77,9 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
 
     if (awayTeam) {
       awayTeam.players.forEach(player => {
+        // Only include starter players
+        if (!isStarter(player.position)) return;
+
         const defenseRank = getDefenseRankForPosition(player.position);
         const legs = StatParser.getTopSafeLegs(player, awayTeam.teamName, 3, defenseRank);
         allLegs.push(...legs);
