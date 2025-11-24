@@ -150,6 +150,7 @@ export const StatParser = {
 
   /**
    * Get top N safest legs from a player's stats
+   * Filters for only Receiving and Rushing stats
    * Returns legs sorted by combined safety + defense advantage score
    * Incorporates defense rankings to weight recommendations
    */
@@ -174,7 +175,14 @@ export const StatParser = {
     const summaries = StatParser.getAllStatSummaries(player.last5Games);
     const defenseAdvantage = defenseRank ? StatParser.calculateDefenseAdvantage(defenseRank) : 0;
 
-    const legs = summaries.map(summary => ({
+    // Filter to only include Receiving and Rushing stats
+    const filteredSummaries = summaries.filter(summary => {
+      const statLower = summary.name.toLowerCase();
+      return statLower.includes('rec') || statLower.includes('rush') ||
+             statLower.includes('receiving') || statLower.includes('rushing');
+    });
+
+    const legs = filteredSummaries.map(summary => ({
       player: player.name,
       team: teamName,
       position: player.position,
@@ -188,7 +196,7 @@ export const StatParser = {
       defenseAdvantage
     }));
 
-    // Sort by combined score: 60% safety score + 40% defense advantage
+    // Sort by combined score: 60% safety score + 40% defense advantage (higher confidence first)
     return legs
       .map(leg => ({
         ...leg,
