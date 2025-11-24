@@ -32,6 +32,8 @@ const App: React.FC = () => {
      return true;
   });
 
+  const [safeLegsPanelOpen, setSafeLegsPanelOpen] = useState(true);
+
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
   const [cloudStatus, setCloudStatus] = useState<'checking' | 'connected' | 'offline'>('checking');
   const [saveNotification, setSaveNotification] = useState<{ show: boolean; gameId?: string }>({ show: false });
@@ -512,15 +514,26 @@ const App: React.FC = () => {
         </div>
 
         {/* Right Sidebar (Safe Legs Panel) */}
-        <div className="hidden lg:flex flex-col h-screen sticky top-0 overflow-hidden z-40 lg:w-96 bg-slate-900 border-l border-slate-800">
-            <SafeLegsPanel
-                homeTeam={rosterData?.teamA}
-                awayTeam={rosterData?.teamB}
-                onAddLeg={togglePin}
-                disabled={!rosterData}
-                defenseStats={result?.defenseStats}
-            />
-        </div>
+        {safeLegsPanelOpen ? (
+            <div className="hidden lg:flex flex-col h-screen sticky top-0 overflow-hidden z-40 lg:w-96 bg-slate-900 border-l border-slate-800">
+                <SafeLegsPanel
+                    homeTeam={rosterData?.teamA}
+                    awayTeam={rosterData?.teamB}
+                    onAddLeg={togglePin}
+                    disabled={!rosterData}
+                    defenseStats={result?.defenseStats}
+                    onClose={() => setSafeLegsPanelOpen(false)}
+                />
+            </div>
+        ) : (
+            <button
+                onClick={() => setSafeLegsPanelOpen(true)}
+                className="hidden lg:flex items-center justify-center h-screen sticky top-0 w-12 bg-slate-900 border-l border-slate-800 hover:bg-slate-800 transition-colors"
+                title="Open Safe Legs panel"
+            >
+                <span className="text-amber-500 font-bold text-xs writing-mode-vertical transform -rotate-90">SAFE LEGS</span>
+            </button>
+        )}
     </div>
   );
 };

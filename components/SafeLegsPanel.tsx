@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Plus, Shield, TrendingUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Shield, TrendingUp, X } from 'lucide-react';
 import { TeamRoster, ParlayLeg, DefenseStat } from '../types';
 import { StatParser } from '../services/statParser';
 
@@ -9,6 +9,7 @@ interface SafeLegsPanelProps {
   onAddLeg: (leg: ParlayLeg) => void;
   disabled?: boolean;
   defenseStats?: DefenseStat[];
+  onClose?: () => void;
 }
 
 const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
@@ -16,7 +17,8 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
   awayTeam,
   onAddLeg,
   disabled = false,
-  defenseStats = []
+  defenseStats = [],
+  onClose
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [customLines, setCustomLines] = useState<{ [key: string]: number }>({});
@@ -53,12 +55,15 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
       });
     }
 
-    // Sort by safety score + defense advantage descending
-    return allLegs.sort((a, b) => {
+    // Filter to only show legs with significant defense advantage (>50%)
+    const filteredLegs = allLegs.filter(leg => leg.defenseAdvantage > 50);
+
+    // Sort by combined score descending and limit to 5
+    return filteredLegs.sort((a, b) => {
       const scoreA = (a.safetyScore * 0.6) + (a.defenseAdvantage * 0.4);
       const scoreB = (b.safetyScore * 0.6) + (b.defenseAdvantage * 0.4);
       return scoreB - scoreA;
-    }).slice(0, 15);
+    }).slice(0, 5);
   };
 
   const safeLegs = getSafeLegs();
@@ -106,23 +111,30 @@ const SafeLegsPanel: React.FC<SafeLegsPanelProps> = ({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between px-4 py-3 border-b border-slate-800 hover:bg-slate-900/50 transition-colors"
-      >
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/50">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-2 flex-1 hover:bg-slate-900/50 transition-colors"
+        >
           <Shield size={16} className="text-amber-500" />
           <span className="font-bold text-white">Safe Legs</span>
           <span className="text-xs px-2 py-0.5 rounded bg-amber-900/30 text-amber-300">
             {safeLegs.length}
           </span>
-        </div>
-        {isExpanded ? (
-          <ChevronUp size={16} className="text-slate-400" />
-        ) : (
-          <ChevronDown size={16} className="text-slate-400" />
-        )}
-      </button>
+          {isExpanded ? (
+            <ChevronUp size={16} className="text-slate-400 ml-auto" />
+          ) : (
+            <ChevronDown size={16} className="text-slate-400 ml-auto" />
+          )}
+        </button>
+        <button
+          onClick={onClose}
+          className="ml-2 p-1 hover:bg-slate-800 rounded transition-colors text-slate-400 hover:text-white"
+          title="Close Safe Legs panel"
+        >
+          <X size={16} />
+        </button>
+      </div>
 
       {/* Content */}
       {isExpanded && (
