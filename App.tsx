@@ -32,8 +32,8 @@ const App: React.FC = () => {
      return true;
   });
 
-  const [safeLegsPanelOpen, setSafeLegsPanelOpen] = useState(true);
-  const [parlayPanelOpen, setParlayPanelOpen] = useState(true);
+  const [safeLegsPanelOpen, setSafeLegsPanelOpen] = useState(false);
+  const [parlayPanelOpen, setParlayPanelOpen] = useState(false);
 
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
   const [cloudStatus, setCloudStatus] = useState<'checking' | 'connected' | 'offline'>('checking');
