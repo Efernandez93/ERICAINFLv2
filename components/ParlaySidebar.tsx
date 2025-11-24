@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { ParlayLeg } from '../types';
-import { Trash2, Receipt, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, Receipt, ExternalLink, ChevronDown, ChevronUp, X } from 'lucide-react';
 
 interface ParlaySidebarProps {
   legs: ParlayLeg[];
   onRemoveLeg: (id: string) => void;
+  onClose?: () => void;
 }
 
-const ParlaySidebar: React.FC<ParlaySidebarProps> = ({ legs, onRemoveLeg }) => {
+const ParlaySidebar: React.FC<ParlaySidebarProps> = ({ legs, onRemoveLeg, onClose }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   // Simple mock odds calculation (not real betting math, but effective for UI demo)
   // Assuming -110 for each leg for simplicity in a parlay multiplier
@@ -26,25 +27,34 @@ const ParlaySidebar: React.FC<ParlaySidebarProps> = ({ legs, onRemoveLeg }) => {
 
   return (
     <div className="h-full flex flex-col bg-slate-900 w-full sticky top-0 overflow-hidden">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900 z-10 hover:bg-slate-800 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Receipt className="text-indigo-500" size={20} />
-            My Parlay
-          </h2>
-          <span className="text-xs px-2 py-0.5 rounded bg-indigo-900/30 text-indigo-300">
-            {legs.length}
-          </span>
-        </div>
-        {isExpanded ? (
-          <ChevronUp size={16} className="text-slate-400" />
-        ) : (
-          <ChevronDown size={16} className="text-slate-400" />
-        )}
-      </button>
+      <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900 z-10">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-2 flex-1 hover:bg-slate-900/50 transition-colors rounded"
+        >
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Receipt className="text-indigo-500" size={20} />
+              My Parlay
+            </h2>
+            <span className="text-xs px-2 py-0.5 rounded bg-indigo-900/30 text-indigo-300">
+              {legs.length}
+            </span>
+          </div>
+          {isExpanded ? (
+            <ChevronUp size={16} className="text-slate-400 ml-auto" />
+          ) : (
+            <ChevronDown size={16} className="text-slate-400 ml-auto" />
+          )}
+        </button>
+        <button
+          onClick={onClose}
+          className="ml-2 p-1 hover:bg-slate-800 rounded transition-colors text-slate-400 hover:text-white"
+          title="Close My Parlay panel"
+        >
+          <X size={16} />
+        </button>
+      </div>
 
       {isExpanded && (
         <>

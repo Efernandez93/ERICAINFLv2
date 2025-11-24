@@ -33,6 +33,7 @@ const App: React.FC = () => {
   });
 
   const [safeLegsPanelOpen, setSafeLegsPanelOpen] = useState(true);
+  const [parlayPanelOpen, setParlayPanelOpen] = useState(true);
 
   const [cachedGameIds, setCachedGameIds] = useState<string[]>([]);
   const [cloudStatus, setCloudStatus] = useState<'checking' | 'connected' | 'offline'>('checking');
@@ -187,14 +188,24 @@ const App: React.FC = () => {
     <div className="flex min-h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
 
         {/* Left Sidebar (Parlay Builder) */}
-        <div className={`${sidebarOpen ? 'block' : 'hidden'} lg:block h-screen sticky top-0 overflow-hidden z-40 lg:w-80 w-full`}>
-             <div className="lg:hidden absolute top-4 right-4 z-50">
-                 <button onClick={() => setSidebarOpen(false)} className="text-slate-400 hover:text-white">
-                     Close Slip
-                 </button>
-             </div>
-            <ParlaySidebar legs={pinnedLegs} onRemoveLeg={removePin} />
-        </div>
+        {parlayPanelOpen ? (
+            <div className={`${sidebarOpen ? 'block' : 'hidden'} lg:block h-screen sticky top-0 overflow-hidden z-40 lg:w-80 w-full`}>
+                 <div className="lg:hidden absolute top-4 right-4 z-50">
+                     <button onClick={() => setSidebarOpen(false)} className="text-slate-400 hover:text-white">
+                         Close Slip
+                     </button>
+                 </div>
+                <ParlaySidebar legs={pinnedLegs} onRemoveLeg={removePin} onClose={() => setParlayPanelOpen(false)} />
+            </div>
+        ) : (
+            <button
+                onClick={() => setParlayPanelOpen(true)}
+                className="hidden lg:flex items-center justify-center h-screen sticky top-0 w-12 bg-slate-900 border-r border-slate-800 hover:bg-slate-800 transition-colors"
+                title="Open My Parlay panel"
+            >
+                <span className="text-indigo-500 font-bold text-xs writing-mode-vertical transform -rotate-90">MY PARLAY</span>
+            </button>
+        )}
 
         {/* Main Content */}
         <div className="flex-1 h-screen overflow-y-auto relative flex flex-col">
