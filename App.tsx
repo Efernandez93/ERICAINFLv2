@@ -5,6 +5,7 @@ import LegCard from './components/LegCard';
 import SourceList from './components/SourceList';
 import RosterList from './components/RosterList';
 import ParlaySidebar from './components/ParlaySidebar';
+import SafeLegsPanel from './components/SafeLegsPanel';
 import { getKeyPlayersAndStats, getDeepAnalysis } from './services/gemini';
 import { StorageService } from './services/storage';
 import { AnalysisResult, GroundingSource, ParlayLeg, Game, TeamRoster } from './types';
@@ -182,9 +183,9 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
-        
+
         {/* Left Sidebar (Parlay Builder) */}
-        <div className={`${sidebarOpen ? 'block' : 'hidden'} lg:block h-screen fixed inset-0 lg:sticky lg:top-0 overflow-y-auto z-40 bg-slate-900 shadow-xl shadow-black/50 lg:w-80 w-full`}>
+        <div className={`${sidebarOpen ? 'block' : 'hidden'} lg:block h-screen sticky top-0 overflow-hidden z-40 lg:w-80 w-full`}>
              <div className="lg:hidden absolute top-4 right-4 z-50">
                  <button onClick={() => setSidebarOpen(false)} className="text-slate-400 hover:text-white">
                      Close Slip
@@ -211,11 +212,11 @@ const App: React.FC = () => {
                             <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Expert Real-time Intelligent Capper</span>
                         </div>
                     </div>
-                    <button 
+                    <button
                         className="lg:hidden text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg border border-indigo-500 font-bold shadow-lg shadow-indigo-900/20"
                         onClick={() => setSidebarOpen(!sidebarOpen)}
                     >
-                        {sidebarOpen ? 'Hide Slip' : `View Slip (${pinnedLegs.length})`}
+                        {sidebarOpen ? 'Hide Slip' : `View (${pinnedLegs.length})`}
                     </button>
                 </div>
             </header>
@@ -508,6 +509,22 @@ const App: React.FC = () => {
                     </div>
                 )}
             </footer>
+        </div>
+
+        {/* Right Sidebar (Safe Legs & Parlay Analysis) */}
+        <div className="hidden lg:flex flex-col h-screen sticky top-0 overflow-hidden z-40 lg:w-96 bg-slate-900 border-l border-slate-800">
+            <div className="grid grid-cols-1 h-full divide-y divide-slate-800 overflow-hidden">
+                {/* Safe Legs Panel (Top Half) */}
+                <SafeLegsPanel
+                    homeTeam={rosterData?.teamA}
+                    awayTeam={rosterData?.teamB}
+                    onAddLeg={togglePin}
+                    disabled={!rosterData}
+                />
+
+                {/* My Parlay Panel (Bottom Half) */}
+                <ParlaySidebar legs={pinnedLegs} onRemoveLeg={removePin} />
+            </div>
         </div>
     </div>
   );

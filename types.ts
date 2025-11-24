@@ -17,6 +17,12 @@ export interface ParlayLeg {
   reasoning: string;
   playerAvg: number;
   defenseAllowedVsPos: number | string;
+  // Safe Leg fields
+  isSafeLeg?: boolean; // Whether this is a safe leg recommendation
+  safetyScore?: number; // 0-100 consistency score
+  playerMinAvg?: number; // Minimum in last 5 games
+  playerMaxAvg?: number; // Maximum in last 5 games
+  variance?: number; // Standard deviation of stats
 }
 
 export interface GameLog {
